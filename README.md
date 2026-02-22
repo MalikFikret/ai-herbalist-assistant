@@ -1,0 +1,2 @@
+# ai-herbalist-assistant
+Computer Engineering Design Project I - An AI-powered herbalist assistant using Multi-Agent System and RAG.
