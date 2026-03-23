@@ -1,0 +1,2 @@
+"""AI Herbalist Assistant package."""
+
