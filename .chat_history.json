@@ -1,0 +1,149 @@
+{
+  "ebru": {
+    "active_chat_id": "9bc65eb0606a4f77a46d0dbbe6ed8bc6",
+    "chats": [
+      {
+        "id": "93163084b68f48e8bcbc16b719b4b66a",
+        "title": "New Chat",
+        "created_at": "2026-03-25 18:48:29",
+        "updated_at": "2026-03-25 18:48:29",
+        "messages": [
+          {
+            "role": "assistant",
+            "content": "Hello! I am your \ud83c\udf3f AI Herbalist Assistant. Ask me about herbs, traditional remedies, and general wellness support. I base my answers on the herbal PDFs you provide in the local `data/` folder.\n\n_Note: This is for educational purposes only and not medical advice._",
+            "timestamp": "2026-03-25 18:48:29",
+            "sources": []
+          }
+        ]
+      },
+      {
+        "id": "113262b42ed54a34bf46980f0d6f397f",
+        "title": "New Chat",
+        "created_at": "2026-03-25 18:48:29",
+        "updated_at": "2026-03-25 18:48:29",
+        "messages": [
+          {
+            "role": "assistant",
+            "content": "Hello! I am your \ud83c\udf3f AI Herbalist Assistant. Ask me about herbs, traditional remedies, and general wellness support. I base my answers on the herbal PDFs you provide in the local `data/` folder.\n\n_Note: This is for educational purposes only and not medical advice._",
+            "timestamp": "2026-03-25 18:48:29",
+            "sources": []
+          }
+        ]
+      },
+      {
+        "id": "5f78d74a326e4485a91c1a0c2e50e005",
+        "title": "New Chat",
+        "created_at": "2026-03-25 18:48:29",
+        "updated_at": "2026-03-25 18:48:29",
+        "messages": [
+          {
+            "role": "assistant",
+            "content": "Hello! I am your \ud83c\udf3f AI Herbalist Assistant. Ask me about herbs, traditional remedies, and general wellness support. I base my answers on the herbal PDFs you provide in the local `data/` folder.\n\n_Note: This is for educational purposes only and not medical advice._",
+            "timestamp": "2026-03-25 18:48:29",
+            "sources": []
+          }
+        ]
+      },
+      {
+        "id": "c410e21e375c45a091b73f9ca942ac7c",
+        "title": "New Chat",
+        "created_at": "2026-03-25 18:48:31",
+        "updated_at": "2026-03-25 18:48:31",
+        "messages": [
+          {
+            "role": "assistant",
+            "content": "Hello! I am your \ud83c\udf3f AI Herbalist Assistant. Ask me about herbs, traditional remedies, and general wellness support. I base my answers on the herbal PDFs you provide in the local `data/` folder.\n\n_Note: This is for educational purposes only and not medical advice._",
+            "timestamp": "2026-03-25 18:48:31",
+            "sources": []
+          }
+        ]
+      },
+      {
+        "id": "d72fd39e0b6e4b5d8f93bd15a00afb15",
+        "title": "What are the benefits of chamomile tea?",
+        "created_at": "2026-03-25 18:48:31",
+        "updated_at": "2026-03-25 18:48:39",
+        "messages": [
+          {
+            "role": "assistant",
+            "content": "Hello! I am your \ud83c\udf3f AI Herbalist Assistant. Ask me about herbs, traditional remedies, and general wellness support. I base my answers on the herbal PDFs you provide in the local `data/` folder.\n\n_Note: This is for educational purposes only and not medical advice._",
+            "timestamp": "2026-03-25 18:48:31",
+            "sources": []
+          },
+          {
+            "role": "user",
+            "content": "What are the benefits of chamomile tea?",
+            "timestamp": "2026-03-25 18:48:35",
+            "sources": []
+          },
+          {
+            "role": "assistant",
+            "content": "**Kisa filtre a\u00e7\u0131klamas\u0131**\nEbru Tug\u00e7e Polat'\u0131n zencefil alerjisi ve \u015feker hastal\u0131\u011f\u0131 nedeniyle baz\u0131 bitkilerle dikkatli yakla\u015fmam\u0131z gerekiyor.\n\n**Guvenli \u00f6neriler listesi**\n- \u015eifa kayna\u011f\u0131 olan \u00e7am f\u0131st\u0131\u011f\u0131 \u00e7ay\u0131, indigestiyonu hafifletmeye yard\u0131mc\u0131 olabilir.\n- So\u011fuk \u00e7ay\u0131, sindirim sistemini rahatlatmaya yard\u0131mc\u0131 olabilir.\n- Aloe vera, cilt sorunlar\u0131n\u0131 hafifletmeye yard\u0131mc\u0131 olabilir.\n\n**Kisa uyari**\nL\u00fctfen \u00e7am f\u0131st\u0131\u011f\u0131 \u00e7ay\u0131 ve aloe vera'y\u0131 kullanmadan \u00f6nce bir sa\u011fl\u0131k uzman\u0131yla dan\u0131\u015f\u0131n.",
+            "timestamp": "2026-03-25 18:48:39",
+            "sources": [
+              "Medical Herbalism - The Science and Practice of Herbal Medicine (2003).pdf",
+              "_OceanofPDF.com_The_Green_Pharmacy_-_James_A_Duke.pdf"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "c8d2e1bf4772450a95fad270923e11ab",
+        "title": "New Chat",
+        "created_at": "2026-03-25 18:48:41",
+        "updated_at": "2026-03-25 18:48:41",
+        "messages": [
+          {
+            "role": "assistant",
+            "content": "Hello! I am your \ud83c\udf3f AI Herbalist Assistant. Ask me about herbs, traditional remedies, and general wellness support. I base my answers on the herbal PDFs you provide in the local `data/` folder.\n\n_Note: This is for educational purposes only and not medical advice._",
+            "timestamp": "2026-03-25 18:48:41",
+            "sources": []
+          }
+        ]
+      },
+      {
+        "id": "4a61f83ba7dd4340819b84a5ec409924",
+        "title": "New Chat",
+        "created_at": "2026-03-25 18:48:47",
+        "updated_at": "2026-03-25 18:48:47",
+        "messages": [
+          {
+            "role": "assistant",
+            "content": "Hello! I am your \ud83c\udf3f AI Herbalist Assistant. Ask me about herbs, traditional remedies, and general wellness support. I base my answers on the herbal PDFs you provide in the local `data/` folder.\n\n_Note: This is for educational purposes only and not medical advice._",
+            "timestamp": "2026-03-25 18:48:47",
+            "sources": []
+          }
+        ]
+      },
+      {
+        "id": "9bc65eb0606a4f77a46d0dbbe6ed8bc6",
+        "title": "basim agriyor bana ne \u00f6nerirsin",
+        "created_at": "2026-03-25 18:48:47",
+        "updated_at": "2026-03-25 18:49:05",
+        "messages": [
+          {
+            "role": "assistant",
+            "content": "Hello! I am your \ud83c\udf3f AI Herbalist Assistant. Ask me about herbs, traditional remedies, and general wellness support. I base my answers on the herbal PDFs you provide in the local `data/` folder.\n\n_Note: This is for educational purposes only and not medical advice._",
+            "timestamp": "2026-03-25 18:48:47",
+            "sources": []
+          },
+          {
+            "role": "user",
+            "content": "basim agriyor bana ne \u00f6nerirsin",
+            "timestamp": "2026-03-25 18:49:04",
+            "sources": []
+          },
+          {
+            "role": "assistant",
+            "content": "**Kisa filtre a\u00e7\u0131klamas\u0131**\nKullan\u0131c\u0131'n\u0131n \u015feker hastal\u0131\u011f\u0131 ve zencefil alerjisi nedeniyle \u00f6nerilerimiz dikkatlice se\u00e7ilmi\u015ftir.\n\n**Guvenli \u00f6neriler listesi**\n- Akdeniz otu: \u015eeker hastal\u0131\u011f\u0131na iyi gelen bir bitkidir.\n- Rosemary: \u015eeker hastal\u0131\u011f\u0131ndan korunmaya yard\u0131mc\u0131 olur.\n- Lavanta: \u015eeker hastal\u0131\u011f\u0131na iyi gelen bir bitkidir.\n\n**Kisa uyari**\nLavanta ve Akdeniz otu gibi \u00f6nerilerimiz, \u015feker hastal\u0131\u011f\u0131na iyi gelen bitkilere dayanmaktad\u0131r. Lakin, her bitki farkl\u0131 ki\u015filere farkl\u0131 etkiler g\u00f6sterebilir.",
+            "timestamp": "2026-03-25 18:49:05",
+            "sources": [
+              "_OceanofPDF.com_The_Green_Pharmacy_-_James_A_Duke.pdf",
+              "Medical Herbalism - The Science and Practice of Herbal Medicine (2003).pdf"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

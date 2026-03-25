@@ -1,4 +1,5 @@
 from typing import Callable
+from pathlib import Path
 
 from herbalist_assistant.types import HerbalistState
 
@@ -11,10 +12,18 @@ def make_retrieval_node(retriever) -> Callable[[HerbalistState], HerbalistState]
 
         docs = retriever.invoke(question)
         context = "\n\n".join(d.page_content for d in docs) if docs else ""
+        sources = []
+        for doc in docs or []:
+            source = doc.metadata.get("source", "")
+            if source:
+                sources.append(Path(str(source)).name)
+        # Preserve order while removing duplicates.
+        sources = list(dict.fromkeys(sources))
         return {
             "question": question,
             "context": context,
             "answer": state.get("answer", ""),
+            "sources": sources,
         }
 
     return retrieval_node
@@ -32,6 +41,7 @@ def make_generation_node(llm, prompt_fn) -> Callable[[HerbalistState], Herbalist
             "question": question,
             "context": context,
             "answer": answer,
+            "sources": state.get("sources", []),
         }
 
     return generation_node

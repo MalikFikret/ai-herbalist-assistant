@@ -34,21 +34,21 @@ def get_vectorstore():
 
 
 @st.cache_resource(show_spinner=False)
-def get_llm():
+def get_llm(model_name: str = config.GROQ_MODEL):
     load_environment()
     api_key = get_groq_api_key()
     return create_groq_llm(
         api_key=api_key,
-        model_name=config.GROQ_MODEL,
+        model_name=model_name,
         temperature=config.LLM_TEMPERATURE,
     )
 
 
 @st.cache_resource(show_spinner=True)
-def get_graph():
+def get_graph(model_name: str = config.GROQ_MODEL):
     vectorstore = get_vectorstore()
     retriever = make_retriever(vectorstore, k=config.RETRIEVER_K)
-    llm = get_llm()
+    llm = get_llm(model_name=model_name)
     return build_graph(retriever=retriever, llm=llm, prompt_fn=build_prompt)
 
 
