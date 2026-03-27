@@ -59,5 +59,17 @@
       "age": "",
       "notes": ""
     }
+  },
+  "m775544": {
+    "password_hash": "e56b95682bc90a9ee475e38e4ef9d1b5a0a2237699c22332cabe9f46266130d4",
+    "salt": "09c20e123cc1ccd7b4853940c9b3a616",
+    "role": "user",
+    "profile": {
+      "name": "",
+      "age": "",
+      "gender": "",
+      "allergies": "",
+      "conditions": ""
+    }
   }
 }

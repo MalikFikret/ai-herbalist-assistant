@@ -8,10 +8,12 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 from herbalist_assistant import config
 from herbalist_assistant.types import HerbalistState
 
+from .i18n import get_string
 from .resources import get_graph, reindex_pdfs
 from .state import (
     append_message,
@@ -92,9 +94,7 @@ def _build_profile_context(profile: Dict[str, str]) -> str:
         "- Provide safer alternatives when risk exists.",
         "",
         "Response format (mandatory):",
-        "1) Short filter explanation",
-        "2) Safe recommendations list",
-        "3) Short warning sentence",
+        "1) Recommendations list",
         "Keep answer concise, non-repetitive, and natural Turkish.",
     ]
     return "\n".join(context_lines)
@@ -145,11 +145,6 @@ def _generate_ai_response(user_input: str, profile: Dict[str, str]) -> tuple[str
         answer = final_state.get("answer", "I'm sorry, I could not generate an answer.")
         sources = final_state.get("sources", [])
         answer = _dedupe_answer_lines(answer)
-        if profile_context and "uyari" not in answer.lower() and "warning" not in answer.lower():
-            answer = (
-                f"{answer}\n\n"
-                "_Uyari: Bu oneriler profilindeki alerji/hastalik bilgilerine gore filtrelenmistir._"
-            )
         return answer, sources
     except Exception:
         # Simple fallback to keep chat UX responsive if model call fails.
@@ -180,12 +175,18 @@ def _inject_global_styles() -> None:
     st.markdown(
         """
         <style>
+        :root {
+            --ha-bg: var(--st-background-color, #ffffff);
+            --ha-bg-2: var(--st-secondary-background-color, #f7faf8);
+            --ha-text: var(--st-text-color, rgba(49, 51, 63, 1));
+            --ha-border: var(--st-border-color, rgba(120, 120, 120, 0.22));
+        }
         .main .block-container {
             max-width: 1100px;
             padding-bottom: 2rem;
         }
         [data-testid="stAppViewContainer"] {
-            background: linear-gradient(180deg, #f6faf7 0%, #f9fbfa 40%, #ffffff 100%);
+            background: var(--ha-bg) !important;
         }
         .ha-auth-layout {
             --auth-panel-height: 560px;
@@ -243,8 +244,8 @@ def _inject_global_styles() -> None:
             margin: 0;
         }
         .ha-auth-card {
-            background: #ffffff;
-            border: 1px solid #dce9e1;
+            background: var(--ha-bg-2) !important;
+            border: 1px solid var(--ha-border) !important;
             border-radius: 0 20px 20px 0;
             padding: 1.2rem 1.1rem 1rem 1.1rem;
             box-shadow: 0 10px 28px rgba(22, 61, 39, 0.08);
@@ -253,8 +254,8 @@ def _inject_global_styles() -> None:
             margin: 0 auto;
         }
         [data-testid="stVerticalBlockBorderWrapper"]:has(.ha-auth-logo) {
-            background: linear-gradient(180deg, #f3faf6 0%, #eef7f2 100%) !important;
-            border: 1px solid #cfe3d7 !important;
+            background: var(--ha-bg-2) !important;
+            border: 1px solid rgba(92, 168, 125, 0.25) !important;
             border-radius: 8px 20px 20px 8px !important;
             box-shadow: 0 10px 28px rgba(22, 61, 39, 0.08) !important;
             min-height: var(--auth-panel-height, 560px);
@@ -295,13 +296,13 @@ def _inject_global_styles() -> None:
         [data-testid="stSidebar"] .ha-sidebar-title {
             font-size: 1rem;
             font-weight: 600;
-            color: var(--text-color);
+            color: var(--ha-text);
             margin: 0.25rem 0 0.5rem 0;
             opacity: 0.85;
         }
         [data-testid="stSidebar"] .ha-sidebar-subtitle {
             font-size: 0.85rem;
-            color: var(--text-color);
+            color: var(--ha-text);
             opacity: 0.65;
             margin-bottom: 0.45rem;
         }
@@ -312,7 +313,7 @@ def _inject_global_styles() -> None:
             margin-bottom: 0.35rem;
             font-size: 0.96rem;
             font-weight: 500;
-            color: var(--text-color);
+            color: var(--ha-text);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -337,19 +338,19 @@ def _inject_global_styles() -> None:
             font-size: 1.7rem;
             margin-bottom: 0.2rem;
             font-weight: 700;
-            color: #1e2b23;
+            color: var(--ha-text);
         }
         .ha-auth-subtitle {
             text-align: center;
             margin-bottom: 1rem;
-            color: #5d6c62;
+            color: var(--ha-text);
             opacity: 0.9;
         }
         .ha-auth-switch {
             margin-top: 0.45rem;
             text-align: center;
             font-size: 0.86rem;
-            color: #5d6c62;
+            color: var(--ha-text);
         }
         .ha-auth-switch strong {
             color: #25784f;
@@ -359,41 +360,43 @@ def _inject_global_styles() -> None:
             text-align: center;
             font-size: 1.35rem;
             font-weight: 700;
-            color: #1e2b23;
+            color: var(--ha-text);
             margin-top: 0.1rem;
             margin-bottom: 0.45rem;
         }
         [data-testid="stRadio"] label p {
             font-size: 0.95rem !important;
         }
-        [data-testid="stVerticalBlockBorderWrapper"]:has(.ha-auth-logo) div[role="radiogroup"] {
-            background: #f2f6f3;
-            border: 1px solid #dbe7df;
-            border-radius: 999px;
-            padding: 0.2rem;
+        /* Make labels visible against white card bg */
+        label, [data-testid="stMarkdownContainer"] p {
+            color: var(--ha-text) !important;
         }
-        [data-testid="stVerticalBlockBorderWrapper"]:has(.ha-auth-logo) div[role="radiogroup"] > label {
-            border-radius: 999px;
-            margin: 0 !important;
+        [data-testid="stForm"] div[data-baseweb="input"],
+        [data-testid="stForm"] div[data-baseweb="select"] {
+            border-radius: 12px !important;
+            border: 1px solid var(--ha-border) !important;
+            background: var(--ha-bg-2) !important;
+            min-height: 46px;
+            transition: all 0.15s ease;
+            overflow: hidden;
+            color: var(--ha-text) !important;
         }
-        [data-testid="stVerticalBlockBorderWrapper"]:has(.ha-auth-logo) div[role="radiogroup"] > label > div:first-child {
-            display: none !important;
+        [data-testid="stForm"] input,
+        [data-testid="stForm"] textarea,
+        [data-testid="stForm"] [contenteditable="true"] {
+            color: var(--ha-text) !important;
+            -webkit-text-fill-color: var(--ha-text) !important;
+            caret-color: var(--ha-text) !important;
         }
-        [data-testid="stVerticalBlockBorderWrapper"]:has(.ha-auth-logo) div[role="radiogroup"] > label:has(input:checked) {
-            background: #dff2e6 !important;
+        [data-testid="stForm"] div[data-baseweb="input"]:focus-within,
+        [data-testid="stForm"] div[data-baseweb="select"]:focus-within {
+            border-color: #5ca87d !important;
+            box-shadow: 0 0 0 3px rgba(92, 168, 125, 0.16) !important;
         }
         [data-testid="stForm"] div[data-baseweb="input"] > div,
         [data-testid="stForm"] div[data-baseweb="select"] > div {
-            border-radius: 12px !important;
-            border: 1px solid #d7e6dd !important;
-            background: #fcfefd !important;
-            min-height: 46px;
-            transition: all 0.15s ease;
-        }
-        [data-testid="stForm"] div[data-baseweb="input"] > div:focus-within,
-        [data-testid="stForm"] div[data-baseweb="select"] > div:focus-within {
-            border-color: #5ca87d !important;
-            box-shadow: 0 0 0 3px rgba(92, 168, 125, 0.16) !important;
+            background-color: transparent !important;
+            border: none !important;
         }
         [data-testid="stForm"] button[kind="primary"] {
             border-radius: 12px !important;
@@ -418,6 +421,20 @@ def _inject_global_styles() -> None:
         }
         a {
             color: #2a8a5d !important;
+        }
+        .ha-forgot-link > div > button {
+            background: transparent !important;
+            border: none !important;
+            color: #2a8a5d !important;
+            padding: 0 !important;
+            min-height: auto !important;
+            font-size: 0.9rem !important;
+            justify-content: flex-start !important;
+            box-shadow: none !important;
+        }
+        .ha-forgot-link > div > button:hover {
+            color: #1e6644 !important;
+            text-decoration: underline !important;
         }
         [data-testid="stForm"] button[kind="primary"]:hover {
             filter: brightness(1.05);
@@ -456,13 +473,51 @@ def _inject_global_styles() -> None:
             opacity: 0.68;
             font-size: 0.95rem;
         }
+        #MainMenu, [data-testid="stToolbarActions"] {
+            display: none !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
     )
 
 
+def _force_sidebar_collapsed_on_load() -> None:
+    """
+    Streamlit persists sidebar open/closed state in browser localStorage.
+    This forces the sidebar to start collapsed again on refresh/re-run.
+    """
+    components.html(
+        """
+        <script>
+          (function () {
+            try {
+              const flagKey = "ha_sidebar_collapsed_reset";
+              if (window.sessionStorage && window.sessionStorage.getItem(flagKey) === "1") {
+                return;
+              }
+              if (window.sessionStorage) {
+                window.sessionStorage.setItem(flagKey, "1");
+              }
+              for (const k of Object.keys(window.localStorage || {})) {
+                if (k.toLowerCase().includes("sidebar")) {
+                  window.localStorage.removeItem(k);
+                }
+              }
+              window.location.reload();
+            } catch (e) {
+              // If anything fails, fall back to normal Streamlit behavior.
+            }
+          })();
+        </script>
+        """,
+        height=0,
+    )
+
+
 def _init_auth_state() -> None:
+    if "language" not in st.session_state:
+        st.session_state.language = "en"
     if "is_logged_in" not in st.session_state:
         st.session_state.is_logged_in = False
     if "role" not in st.session_state:
@@ -571,8 +626,10 @@ def _authenticate_user(username: str, password: str) -> Dict[str, str]:
     if not username or not password:
         return {"status": "error", "message": "Username and password are required."}
 
-    if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
-        return {"status": "ok", "role": "admin"}
+    if username == ADMIN_USERNAME:
+        if password == ADMIN_PASSWORD:
+            return {"status": "ok", "role": "admin"}
+        return {"status": "error", "message": "Wrong password."}
 
     users = _load_users()
     record = users.get(username)
@@ -588,83 +645,28 @@ def _authenticate_user(username: str, password: str) -> Dict[str, str]:
 
 
 def _render_header() -> None:
+    lang = st.session_state.get("language", "en")
     st.markdown(
-        """
+        f'''
         <style>
-        .herbalist-fixed-header {
-            position: fixed;
-            top: 2.75rem;
-            left: 0;
-            right: 0;
-            z-index: 999;
+        [data-testid="stHeader"]::after {{
+            content: "{get_string(lang, "app_title")}";
+            position: absolute;
+            left: 3.8rem;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--ha-text, #31333f);
             pointer-events: none;
-        }
-        .herbalist-fixed-header__inner {
-            max-width: 62rem;
-            margin: 0 auto;
-            padding: 0.2rem 0.9rem 0.45rem 0.9rem;
-            background-color: var(--background-color, #ffffff);
-            border-bottom: 1px solid rgba(49, 51, 63, 0.12);
-            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.05);
-        }
-        .herbalist-fixed-header h1 {
-            font-size: 1.35rem;
-            font-weight: 600;
-            line-height: 1.2;
-            margin: 0 0 0.2rem 0;
-            color: var(--text-color);
-        }
-        .herbalist-fixed-header p {
-            margin: 0;
-            font-size: 0.8rem;
-            line-height: 1.35;
-            color: var(--text-color);
-            opacity: 0.68;
-        }
-        .role-badge {
-            display: inline-block;
-            margin-top: 0.5rem;
-            margin-bottom: 0.75rem;
-            padding: 0.45rem 0.8rem;
-            border-radius: 999px;
-            font-size: 0.9rem;
-            font-weight: 600;
-        }
-        .role-badge.role-admin {
-            background: rgba(30, 175, 85, 0.14);
-            color: #1f7a3b;
-        }
-        .role-badge.role-user {
-            background: rgba(47, 157, 104, 0.13);
-            color: #2a8a5d;
-        }
-        .block-container {
-            padding-top: 8.1rem !important;
-        }
+        }}
+        .block-container {{
+            padding-top: 3.5rem !important;
+        }}
         </style>
-        <div class="herbalist-fixed-header">
-            <div class="herbalist-fixed-header__inner">
-                <h1>🌿 AI Herbalist Assistant</h1>
-                <p>Ask questions about herbal medicine and natural remedies based on your local PDF library.
-                This tool is for educational purposes only and does not provide medical advice.</p>
-            </div>
-        </div>
-        """,
+        ''',
         unsafe_allow_html=True,
     )
-
-
-def _render_role_badge() -> None:
-    if st.session_state.role == "admin":
-        st.markdown(
-            '<span class="role-badge role-admin">🟢 Admin Mode</span>',
-            unsafe_allow_html=True,
-        )
-    else:
-        st.markdown(
-            '<span class="role-badge role-user">🔵 User Mode</span>',
-            unsafe_allow_html=True,
-        )
 
 
 def _list_pdf_files() -> List[Path]:
@@ -700,65 +702,109 @@ def _logout() -> None:
 
 
 def _render_auth_screen() -> None:
+    lang = st.session_state.get("language", "en")
     if "auth_mode" not in st.session_state:
         st.session_state.auth_mode = "Login"
 
     left_col, right_col = st.columns([1.03, 1], gap="small")
+    hero_foot = get_string(lang, "hero_foot")
+    hero_foot_html = (
+        f'<div class="ha-auth-hero-foot">{hero_foot}</div>' if hero_foot else ""
+    )
 
     with left_col:
         st.markdown(
-            """
+            f'''
             <div class="ha-auth-hero">
                 <div>
-                    <div class="ha-auth-hero-brand">🌿 AI Herbalist Assistant</div>
-                    <div class="ha-auth-hero-title">Dogal bilgiye hizli, guvenli ve sade erisim.</div>
+                    <div class="ha-auth-hero-brand">{get_string(lang, "hero_brand")}</div>
+                    <div class="ha-auth-hero-title">{get_string(lang, "hero_title")}</div>
                     <div class="ha-auth-hero-sub">
-                        Profiline uygun bitki onerileri al, riskli onerilerden uzak dur,
-                        konusmalarini tek yerden yonet.
+                        {get_string(lang, "hero_sub")}
                     </div>
                 </div>
-                <div class="ha-auth-hero-foot">Sağlık tavsiyesi yerine eğitim amaçlı bilgi sunar.</div>
+                {hero_foot_html}
             </div>
-            """,
+            ''',
             unsafe_allow_html=True,
         )
 
     with right_col:
         with st.container(border=True):
             st.markdown('<div class="ha-auth-logo">🌿</div>', unsafe_allow_html=True)
-            st.markdown('<div class="ha-auth-right-head">Get started</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="ha-auth-right-head">{get_string(lang, "get_started")}</div>', unsafe_allow_html=True)
             if st.session_state.auth_mode not in {"Login", "Register", "Reset Password"}:
                 st.session_state.auth_mode = "Login"
 
             auth_mode = st.session_state.auth_mode
             if auth_mode == "Reset Password":
                 st.markdown(
-                    '<div class="ha-auth-subtitle">Sifreni uygulama icinden guvenli sekilde yenile.</div>',
+                    f'<div class="ha-auth-subtitle">{get_string(lang, "reset_subtitle")}</div>',
                     unsafe_allow_html=True,
                 )
+                with st.form("reset_password_form", clear_on_submit=True):
+                    reset_username = st.text_input(get_string(lang, "username"), key="reset_username")
+                    new_password = st.text_input(
+                        get_string(lang, "new_password"),
+                        type="password",
+                        key="reset_new_password",
+                    )
+                    confirm_new_password = st.text_input(
+                        get_string(lang, "confirm_new_password"),
+                        type="password",
+                        key="reset_confirm_new_password",
+                    )
+                    submit_reset = st.form_submit_button(
+                        get_string(lang, "reset_pwd_btn"),
+                        type="primary",
+                        use_container_width=True,
+                    )
+
+                if submit_reset:
+                    result = _reset_user_password(reset_username, new_password, confirm_new_password)
+                    if result.startswith("Password reset successful"):
+                        st.success(result)
+                        st.session_state.auth_mode = "Login"
+                        st.rerun()
+                    else:
+                        st.error(result)
+
+                if st.button(get_string(lang, "back_to_login"), use_container_width=True):
+                    st.session_state.auth_mode = "Login"
+                    st.rerun()
             else:
                 st.markdown(
-                    '<div class="ha-auth-subtitle">Hesabina gir veya yeni hesap olustur.</div>',
+                    f'<div class="ha-auth-subtitle">{get_string(lang, "auth_subtitle")}</div>',
                     unsafe_allow_html=True,
                 )
-                selected_mode = st.radio(
-                    "Auth Mode",
-                    options=["Login", "Register"],
-                    index=0 if auth_mode == "Login" else 1,
-                    horizontal=True,
-                    label_visibility="collapsed",
-                )
-                st.session_state.auth_mode = selected_mode
-                auth_mode = selected_mode
+                tab_login, tab_register = st.tabs([get_string(lang, "login_btn"), get_string(lang, "create_account")])
+                
+                with tab_login:
+                    with st.form("login_form", clear_on_submit=False):
+                        username = st.text_input(get_string(lang, "username"), key="login_username")
+                        password = st.text_input(get_string(lang, "password"), type="password", key="login_password")
+                        submit_login = st.form_submit_button(get_string(lang, "login_btn"), type="primary", use_container_width=True)
+                    
+                    st.markdown('<div class="ha-forgot-link">', unsafe_allow_html=True)
+                    if st.button(get_string(lang, "forgot_pwd"), use_container_width=False):
+                        st.session_state.auth_mode = "Reset Password"
+                        st.rerun()
+                    st.markdown('</div>', unsafe_allow_html=True)
 
-            if auth_mode == "Login":
-                with st.form("login_form", clear_on_submit=False):
-                    username = st.text_input("Username", key="login_username")
-                    password = st.text_input("Password", type="password", key="login_password")
-                    submit_login = st.form_submit_button("Login", type="primary", use_container_width=True)
-                if st.button("Forgot password?", use_container_width=False):
-                    st.session_state.auth_mode = "Reset Password"
-                    st.rerun()
+                with tab_register:
+                    with st.form("register_form", clear_on_submit=True):
+                        reg_username = st.text_input(get_string(lang, "username"), key="register_username")
+                        reg_password = st.text_input(get_string(lang, "password"), type="password", key="register_password")
+                        reg_confirm = st.text_input(
+                            get_string(lang, "confirm_password"),
+                            type="password",
+                            key="register_confirm_password",
+                        )
+                        submit_register = st.form_submit_button(
+                            get_string(lang, "create_account"),
+                            type="primary",
+                            use_container_width=True,
+                        )
 
                 if submit_login:
                     auth = _authenticate_user(username, password)
@@ -770,124 +816,68 @@ def _render_auth_screen() -> None:
                         st.session_state.role = auth.get("role", "user")
                         st.session_state.user_profile = _get_user_profile(st.session_state.username)
                         if st.session_state.role == "user":
+                            start_new_chat(st.session_state.username)
                             _sync_conversations_to_session(st.session_state.username)
                         st.session_state.active_page = "Admin Panel" if st.session_state.role == "admin" else "Chat"
                         st.success("Login successful.")
                         st.rerun()
-
-                st.markdown(
-                    '<div class="ha-auth-switch">Hesabin yok mu? <strong>Register</strong> sekmesine gec.</div>',
-                    unsafe_allow_html=True,
-                )
-            else:
-                if auth_mode == "Register":
-                    with st.form("register_form", clear_on_submit=True):
-                        reg_username = st.text_input("Username", key="register_username")
-                        reg_password = st.text_input("Password", type="password", key="register_password")
-                        reg_confirm = st.text_input(
-                            "Confirm Password",
-                            type="password",
-                            key="register_confirm_password",
-                        )
-                        submit_register = st.form_submit_button(
-                            "Create Account",
-                            type="primary",
-                            use_container_width=True,
-                        )
-
-                    if submit_register:
-                        result = _register_user(reg_username, reg_password, reg_confirm)
-                        if result.startswith("Account created"):
-                            st.success(result)
-                            st.session_state.auth_mode = "Login"
-                        else:
-                            st.error(result)
-
-                    st.markdown(
-                        '<div class="ha-auth-switch">Zaten hesabin var mi? <strong>Login</strong> sekmesine gec.</div>',
-                        unsafe_allow_html=True,
-                    )
-                else:
-                    with st.form("reset_password_form", clear_on_submit=True):
-                        reset_username = st.text_input("Username", key="reset_username")
-                        new_password = st.text_input(
-                            "New Password",
-                            type="password",
-                            key="reset_new_password",
-                        )
-                        confirm_new_password = st.text_input(
-                            "Confirm New Password",
-                            type="password",
-                            key="reset_confirm_new_password",
-                        )
-                        submit_reset = st.form_submit_button(
-                            "Reset Password",
-                            type="primary",
-                            use_container_width=True,
-                        )
-
-                    if submit_reset:
-                        result = _reset_user_password(reset_username, new_password, confirm_new_password)
-                        if result.startswith("Password reset successful"):
-                            st.success(result)
-                            st.session_state.auth_mode = "Login"
-                        else:
-                            st.error(result)
-
-                    st.markdown(
-                        '<div class="ha-auth-switch">Login ekranina geri donmek icin asagidaki butonu kullan.</div>',
-                        unsafe_allow_html=True,
-                    )
-                    if st.button("Back to Login", use_container_width=True):
-                        st.session_state.auth_mode = "Login"
-                        st.rerun()
+                        
+                if submit_register:
+                    result = _register_user(reg_username, reg_password, reg_confirm)
+                    if result.startswith("Account created"):
+                        st.success(result)
+                    else:
+                        st.error(result)
 
 
 def _render_chat_page() -> None:
+    lang = st.session_state.get("language", "en")
     username = st.session_state.username
     init_session_state(username)
     _sync_conversations_to_session(username)
     chats = get_user_chat_summaries(username)
     active_chat_id = st.session_state.get("active_chat_id", "")
     active_chat_title = next(
-        (chat.get("title", "New Chat") for chat in chats if chat.get("id") == active_chat_id),
-        "New Chat",
+        (chat.get("title", get_string(lang, "new_chat")) for chat in chats if chat.get("id") == active_chat_id),
+        get_string(lang, "new_chat"),
     )
 
     st.markdown(
         f'<div class="ha-section-title">{_truncate_chat_title(active_chat_title, 80)}</div>',
         unsafe_allow_html=True,
     )
-    st.markdown(
-        '<div class="ha-section-subtitle">Chat with your assistant using the selected conversation from the sidebar.</div>',
-        unsafe_allow_html=True,
-    )
+
+
+    user_input = st.chat_input(get_string(lang, "chat_input_placeholder"))
+    if not user_input and st.session_state.get("pending_prompt"):
+        user_input = st.session_state.pop("pending_prompt")
+
+    has_user_msg = any(m["role"] == "user" for m in st.session_state.messages)
+    will_have_user_msg = has_user_msg or bool(user_input)
 
     for msg in st.session_state.messages:
+        if msg["role"] == "assistant":
+            if "Hello! I am your 🌿 AI Herbalist" in msg["content"] or "Merhaba! Ben sizin 🌿" in msg["content"]:
+                continue
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
             sources = msg.get("sources", [])
             if msg["role"] == "assistant" and sources:
                 st.caption(f"Sources: {', '.join(sources)}")
 
-    # Fill empty user space with practical starter prompts.
-    if not any(m["role"] == "user" for m in st.session_state.messages):
-        st.markdown("#### Suggested Questions")
-        prompt_options = [
-            "What are the benefits of chamomile tea?",
-            "How can ginger support digestion?",
-            "Which herbs can help with mild stress?",
-            "What is a safe herbal routine for better sleep?",
-        ]
+    if not will_have_user_msg:
+        with st.chat_message("assistant"):
+            st.markdown(get_string(lang, "bot_greeting"))
+            
+        st.markdown(get_string(lang, "suggested_questions"))
+        prompt_options = get_string(lang, "suggested_prompts")
         columns = st.columns(2)
         for i, question in enumerate(prompt_options):
             with columns[i % 2]:
                 if st.button(question, key=f"suggested_{i}", use_container_width=True):
                     st.session_state.pending_prompt = question
+                    st.rerun()
 
-    user_input = st.chat_input("Ask about herbs and remedies...")
-    if not user_input and st.session_state.get("pending_prompt"):
-        user_input = st.session_state.pop("pending_prompt")
     if not user_input:
         return
 
@@ -904,29 +894,30 @@ def _render_chat_page() -> None:
 
 
 def _render_admin_panel() -> None:
+    lang = st.session_state.get("language", "en")
     _require_admin()
-    st.markdown('<div class="ha-section-title">Admin Dashboard</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="ha-section-title">{get_string(lang, "admin_dashboard")}</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="ha-section-subtitle">Manage PDFs, re-index the vector database, and configure model settings.</div>',
+        f'<div class="ha-section-subtitle">{get_string(lang, "admin_subtitle")}</div>',
         unsafe_allow_html=True,
     )
 
     metric_col1, metric_col2, metric_col3 = st.columns(3)
     with metric_col1:
-        st.metric("Total PDFs", len(_list_pdf_files()))
+        st.metric(get_string(lang, "total_pdfs"), len(_list_pdf_files()))
     with metric_col2:
-        st.metric("Last Index Time", _get_last_index_time())
+        st.metric(get_string(lang, "last_index_time"), _get_last_index_time())
     with metric_col3:
-        st.metric("Active Model", st.session_state.selected_model)
+        st.metric(get_string(lang, "active_model"), st.session_state.selected_model)
 
     pdf_files = _list_pdf_files()
 
     col1, col2 = st.columns(2)
     with col1:
         with st.container(border=True):
-            st.markdown("#### 📚 PDF Upload")
+            st.markdown(get_string(lang, "pdf_upload"))
             uploaded = st.file_uploader(
-                "Choose PDF files",
+                get_string(lang, "upload_btn"),
                 type=["pdf"],
                 accept_multiple_files=True,
                 key="admin_pdf_uploader",
@@ -940,26 +931,26 @@ def _render_admin_panel() -> None:
                 st.success(f"{len(uploaded)} PDF file(s) uploaded.")
 
         with st.container(border=True):
-            st.markdown("#### 🔄 Re-index")
-            st.caption("Rebuild embeddings and refresh local vector database.")
-            if st.button("Re-index PDFs", type="primary", use_container_width=True):
+            st.markdown(get_string(lang, "reindex"))
+            st.caption(get_string(lang, "reindex_desc"))
+            if st.button(get_string(lang, "reindex_btn"), type="primary", use_container_width=True):
                 with st.spinner("Rebuilding database from PDFs, please wait..."):
                     reindex_pdfs()
                 st.session_state.last_index_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                st.success("Database rebuilt successfully.")
+                st.success(get_string(lang, "db_rebuilt"))
 
     with col2:
         with st.container(border=True):
-            st.markdown("#### 🗑️ PDF Delete")
+            st.markdown(get_string(lang, "pdf_delete"))
             if pdf_files:
                 selected_delete = st.multiselect(
-                    "Select PDF file(s) to delete",
+                    get_string(lang, "delete_select"),
                     options=[p.name for p in pdf_files],
                     key="admin_pdf_delete_select",
                 )
-                if st.button("Delete Selected PDF(s)", use_container_width=True):
+                if st.button(get_string(lang, "delete_btn"), use_container_width=True):
                     if not selected_delete:
-                        st.warning("Please select at least one PDF.")
+                        st.warning(get_string(lang, "select_pdf_warn"))
                     else:
                         data_dir = Path(config.DATA_DIR)
                         deleted_count = 0
@@ -971,12 +962,12 @@ def _render_admin_panel() -> None:
                         st.success(f"Deleted {deleted_count} PDF file(s).")
                         st.rerun()
             else:
-                st.info("No PDF files found.")
+                st.info(get_string(lang, "no_pdf"))
 
         with st.container(border=True):
-            st.markdown("#### ⚙️ Model Selection")
+            st.markdown(get_string(lang, "model_selection"))
             selected_model = st.selectbox(
-                "Choose LLM Model",
+                get_string(lang, "choose_model"),
                 options=AVAILABLE_MODELS,
                 index=AVAILABLE_MODELS.index(st.session_state.selected_model)
                 if st.session_state.selected_model in AVAILABLE_MODELS
@@ -987,21 +978,22 @@ def _render_admin_panel() -> None:
 
 
 def _render_history_page() -> None:
+    lang = st.session_state.get("language", "en")
     username = st.session_state.username
     init_session_state(username)
-    st.markdown('<div class="ha-section-title">History</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="ha-section-title">{get_string(lang, "history")}</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="ha-section-subtitle">Your real conversation list with timestamps and sources.</div>',
+        f'<div class="ha-section-subtitle">{get_string(lang, "history_desc")}</div>',
         unsafe_allow_html=True,
     )
 
     chats = get_user_chat_summaries(username)
     if not chats:
-        st.info("No conversation yet. Start chatting to build your history.")
+        st.info(get_string(lang, "no_history"))
         return
 
     for idx, chat in enumerate(reversed(chats), start=1):
-        title = chat.get("title", "New Chat")
+        title = chat.get("title", get_string(lang, "new_chat"))
         updated_at = chat.get("updated_at", "-")
         chat_id = chat.get("id", "")
         with st.expander(f"{idx}. {title}  ({updated_at})", expanded=idx == 1):
@@ -1011,7 +1003,7 @@ def _render_history_page() -> None:
                     f"Messages: {chat.get('message_count', 0)} | Created: {chat.get('created_at', '-')}"
                 )
             with col_action:
-                if st.button("Open", key=f"open_chat_{chat_id}", use_container_width=True):
+                if st.button(get_string(lang, "open_btn"), key=f"open_chat_{chat_id}", use_container_width=True):
                     if set_active_chat(username, chat_id):
                         st.session_state.active_page = "Chat"
                         st.rerun()
@@ -1046,12 +1038,10 @@ def _render_history_page() -> None:
 
 
 def _render_about_page() -> None:
-    st.markdown('<div class="ha-section-title">About</div>', unsafe_allow_html=True)
+    lang = st.session_state.get("language", "en")
+    st.markdown(f'<div class="ha-section-title">{get_string(lang, "about")}</div>', unsafe_allow_html=True)
     with st.container(border=True):
-        st.markdown(
-            "AI Herbalist Assistant provides herbal information from your local PDF library. "
-            "Responses are for educational purposes and are not medical advice."
-        )
+        st.markdown(get_string(lang, "about_desc"))
 
 
 def _get_user_profile(username: str) -> Dict[str, str]:
@@ -1084,9 +1074,10 @@ def _save_user_profile(username: str, profile: Dict[str, str]) -> bool:
 
 
 def _render_profile_page() -> None:
-    st.markdown('<div class="ha-section-title">Profile</div>', unsafe_allow_html=True)
+    lang = st.session_state.get("language", "en")
+    st.markdown(f'<div class="ha-section-title">{get_string(lang, "profile")}</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="ha-section-subtitle">Create and update your personal profile information.</div>',
+        f'<div class="ha-section-subtitle">{get_string(lang, "profile_desc")}</div>',
         unsafe_allow_html=True,
     )
 
@@ -1099,31 +1090,38 @@ def _render_profile_page() -> None:
     st.session_state.user_profile = current
     with st.container(border=True):
         with st.form("profile_form", clear_on_submit=False):
-            name = st.text_input("Isim", value=current["name"])
-            age = st.text_input("Yas", value=current["age"])
-            gender_options = ["Belirtmek istemiyorum", "Kadin", "Erkek", "Diger"]
+            name = st.text_input(get_string(lang, "name"), value=current["name"])
+            age = st.text_input(get_string(lang, "age"), value=current["age"])
+            gender_options = get_string(lang, "gender_opts")
+            
+            # Map the current gender to its index in English/Turkish if exists, default to 0
+            try:
+                g_idx = gender_options.index(current["gender"])
+            except ValueError:
+                g_idx = 0
+
             gender = st.selectbox(
-                "Cinsiyet",
+                get_string(lang, "gender"),
                 options=gender_options,
-                index=gender_options.index(current["gender"]) if current["gender"] in gender_options else 0,
+                index=g_idx,
             )
             allergies = st.text_area(
-                "Alerjiler",
+                get_string(lang, "allergies"),
                 value=current["allergies"],
-                placeholder="Ornek: Papatya, zencefil, polen",
+                placeholder=get_string(lang, "allergies_placeholder"),
                 height=90,
             )
             conditions = st.text_area(
-                "Mevcut hastaliklar",
+                get_string(lang, "conditions"),
                 value=current["conditions"],
-                placeholder="Ornek: Hipertansiyon, diyabet, gastrit",
+                placeholder=get_string(lang, "conditions_placeholder"),
                 height=120,
             )
-            save_profile = st.form_submit_button("Save Profile", type="primary", use_container_width=True)
+            save_profile = st.form_submit_button(get_string(lang, "save_profile"), type="primary", use_container_width=True)
 
         if save_profile:
             if not name.strip():
-                st.error("Isim alani zorunludur.")
+                st.error(get_string(lang, "name_required"))
             else:
                 is_saved = _save_user_profile(
                     username,
@@ -1137,21 +1135,39 @@ def _render_profile_page() -> None:
                 )
                 if is_saved:
                     st.session_state.user_profile = _get_user_profile(username)
-                    st.success("Profile saved successfully.")
+                    st.success(get_string(lang, "profile_saved"))
                 else:
-                    st.error("Could not save profile. Please try logging in again.")
+                    st.error(get_string(lang, "profile_save_err"))
 
 
 def run() -> None:
     st.set_page_config(
         page_title="AI Herbalist Assistant",
         page_icon="🌿",
-        initial_sidebar_state="collapsed",
+        initial_sidebar_state="expanded",
     )
     _inject_global_styles()
     _init_auth_state()
 
+    lang = st.session_state.get("language", "en")
+
     if not st.session_state.is_logged_in:
+        # Language selector: visible on the login screen.
+        top_left, top_right = st.columns([8, 2], gap="small")
+        with top_right:
+            langs = {"en": "English", "tr": "Türkçe"}
+            new_lang = st.selectbox(
+                "Language / Dil",
+                options=list(langs.keys()),
+                format_func=lambda x: langs[x],
+                index=list(langs.keys()).index(lang),
+                key="language_selector_login",
+                label_visibility="collapsed",
+            )
+            if new_lang != lang:
+                st.session_state.language = new_lang
+                st.rerun()
+
         _render_auth_screen()
         return
 
@@ -1160,12 +1176,11 @@ def run() -> None:
 
     if st.session_state.role != "admin":
         _render_header()
-    _render_role_badge()
-    st.caption(f"Logged in as: {st.session_state.username}")
 
     with st.sidebar:
-        st.markdown("### Navigation")
-        st.caption(f"Signed in as **{st.session_state.username}**")
+        st.markdown(get_string(lang, "sidebar_nav"))
+        st.caption(f"**{st.session_state.username}**")
+
         if st.session_state.role == "admin":
             sections = ["Admin Panel", "Chat"]
             current_index = sections.index(st.session_state.active_page) if st.session_state.active_page in sections else 0
@@ -1186,21 +1201,18 @@ def run() -> None:
                 label_visibility="collapsed",
             )
             st.session_state.active_page = selected_section
-            if st.button("New Chat", use_container_width=True, type="primary"):
+            if st.button(get_string(lang, "new_chat"), use_container_width=True, type="primary"):
                 start_new_chat(st.session_state.username)
                 _sync_conversations_to_session(st.session_state.username)
                 st.session_state.active_page = "Chat"
                 st.rerun()
 
             if selected_section == "Chat":
-                st.markdown('<div class="ha-sidebar-title">Sohbetlerin</div>', unsafe_allow_html=True)
-                st.markdown(
-                    '<div class="ha-sidebar-subtitle">Son konusmalar</div>',
-                    unsafe_allow_html=True,
-                )
+                st.markdown(f'<div class="ha-sidebar-title">{get_string(lang, "your_chats")}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="ha-sidebar-subtitle">{get_string(lang, "recent_conversations")}</div>', unsafe_allow_html=True)
                 user_chats = get_user_chat_summaries(st.session_state.username)
                 active_chat_id = st.session_state.get("active_chat_id", "")
-                # Show only real past conversations and keep each chat ID once.
+                
                 chats_desc = []
                 seen_chat_ids = set()
                 for chat in reversed(user_chats):
@@ -1209,12 +1221,12 @@ def run() -> None:
                         continue
                     if int(chat.get("message_count", 0) or 0) <= 1:
                         continue
-                    if chat.get("title", "New Chat").strip().lower() == "new chat":
+                    if chat.get("title", get_string(lang, "new_chat")).strip().lower() == get_string(lang, "new_chat").lower() or chat.get("title", "New Chat").strip().lower() == "new chat":
                         continue
                     seen_chat_ids.add(chat_id)
                     chats_desc.append(chat)
                 chat_ids = [chat.get("id", "") for chat in chats_desc if chat.get("id")]
-                title_map = {chat.get("id", ""): chat.get("title", "New Chat") for chat in chats_desc}
+                title_map = {chat.get("id", ""): chat.get("title", get_string(lang, "new_chat")) for chat in chats_desc}
                 if chat_ids:
                     current_chat = active_chat_id if active_chat_id in chat_ids else chat_ids[0]
                     previous_sidebar_chat = st.session_state.get("sidebar_selected_chat_id")
@@ -1222,29 +1234,42 @@ def run() -> None:
                         "Conversation list",
                         options=chat_ids,
                         index=chat_ids.index(current_chat),
-                        format_func=lambda cid: _truncate_chat_title(title_map.get(cid, "New Chat")),
+                        format_func=lambda cid: _truncate_chat_title(title_map.get(cid, get_string(lang, "new_chat"))),
                         label_visibility="collapsed",
                     )
                     st.session_state.sidebar_selected_chat_id = selected_chat_id
-                    # Only switch active chat when user changes the sidebar selection.
                     if previous_sidebar_chat is not None and selected_chat_id != previous_sidebar_chat:
                         if set_active_chat(st.session_state.username, selected_chat_id):
                             _sync_conversations_to_session(st.session_state.username)
                             st.session_state.active_page = "Chat"
                             st.rerun()
-                    if st.button("Delete Current Chat", use_container_width=True):
+                    if st.button(get_string(lang, "delete_chat"), use_container_width=True):
                         if delete_chat(st.session_state.username, selected_chat_id):
                             _sync_conversations_to_session(st.session_state.username)
                             st.session_state.active_page = "Chat"
-                            st.success("Chat deleted.")
+                            st.success(get_string(lang, "chat_deleted"))
                             st.rerun()
                         else:
-                            st.error("Could not delete chat.")
+                            st.error(get_string(lang, "chat_delete_err"))
                 else:
                     st.session_state.sidebar_selected_chat_id = None
-                    st.caption("Eski sohbet bulunmuyor.")
+                    st.caption(get_string(lang, "no_past_chats"))
         st.divider()
-        if st.button("Logout", use_container_width=True):
+        
+        langs = {"en": "English", "tr": "Türkçe"}
+        new_lang_sidebar = st.selectbox(
+            "Language / Dil",
+            options=list(langs.keys()),
+            format_func=lambda x: langs[x],
+            index=list(langs.keys()).index(lang),
+            key="language_selector_sidebar",
+            label_visibility="collapsed",
+        )
+        if new_lang_sidebar != lang:
+            st.session_state.language = new_lang_sidebar
+            st.rerun()
+
+        if st.button(get_string(lang, "logout"), use_container_width=True):
             _logout()
 
     if selected_section == "Admin Panel":
@@ -1253,4 +1278,3 @@ def run() -> None:
         _render_chat_page()
     elif selected_section == "Profile":
         _render_profile_page()
-

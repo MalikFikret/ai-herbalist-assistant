@@ -14,19 +14,7 @@ def _now_str() -> str:
 
 
 def _default_messages() -> List[Dict[str, Any]]:
-    return [
-        {
-            "role": "assistant",
-            "content": (
-                "Hello! I am your 🌿 AI Herbalist Assistant. "
-                "Ask me about herbs, traditional remedies, and general wellness support. "
-                "I base my answers on the herbal PDFs you provide in the local `data/` folder.\n\n"
-                "_Note: This is for educational purposes only and not medical advice._"
-            ),
-            "timestamp": _now_str(),
-            "sources": [],
-        }
-    ]
+    return []
 
 
 def _new_chat(*, title: str = "New Chat") -> Dict[str, Any]:
