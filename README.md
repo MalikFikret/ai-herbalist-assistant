@@ -21,61 +21,54 @@ Follow these steps carefully to run the project on your local machine.
 ### 1. Clone the Repository
 Open your terminal and clone this repository:
 ```bash
-git clone [https://github.com/YourUsername/YourRepoName.git](https://github.com/YourUsername/YourRepoName.git)
-cd YourRepoName
-2. Create a Virtual Environment (Recommended)
+git clone https://github.com/MalikFikret/ai-herbalist-assistant.git
+cd ai-herbalist-assistant
+```
+
+### 2. Create a Virtual Environment (Recommended)
 It is highly recommended to use a virtual environment to prevent library conflicts.
-
-Bash
+```bash
 python -m venv venv
-# On Windows:
+
+# To activate it on Windows:
 venv\Scripts\activate
-# On Mac/Linux:
+
+# To activate it on Mac/Linux:
 source venv/bin/activate
-3. Install Dependencies
-Install all the required Python libraries using the requirements.txt file:
+```
 
-Bash
+### 3. Install Dependencies
+Install all the required Python libraries using the `requirements.txt` file:
+```bash
 pip install -r requirements.txt
-4. Setup Environment Variables ⚠️
-The application uses the Groq API for its language model processing. The application will fail to run without a valid API key.
+```
 
-Go to the Groq Console and create a free account.
+### 4. Setup Environment Variables ⚠️
+The application uses the Groq API for its language model processing. **The application will fail to run without a valid API key.**
 
-Generate a new API Key.
-
-In the root directory of this project, create a new file and name it exactly .env
-
-Open the .env file and add your API key in the following format:
-
-Code snippet
+1. Go to the [Groq Console](https://console.groq.com/) and create a free account.
+2. Generate a new API Key.
+3. In the root directory of this project, create a new file and name it exactly `.env`
+4. Open the `.env` file and add your API key in the following format:
+```env
 GROQ_API_KEY=your_api_key_here
-5. Add Reference Data
-The AI requires source documents to function as a retrieval system.
+```
 
-Locate the data/ folder in the project directory.
+---
 
-Place your reference PDF files (e.g., The Green Pharmacy) inside this directory. The system will automatically index them upon startup or when triggered via the admin panel.
-
-▶️ Running the Application
+## ▶️ Running the Application
 Once the setup is complete, you can start the Streamlit server:
-
-Bash
+```bash
 streamlit run src/herbalist_assistant/ui/streamlit_app.py
+```
 (Note: Adjust the path above if your main execution file is named differently).
 
-The application will open automatically in your default web browser at http://localhost:8501.
+The application will open automatically in your default web browser at `http://localhost:8501`.
 
-🛑 Troubleshooting
-Error: chromadb.errors.InternalError: Database error (code: 14)
-If you encounter this error when trying to re-index PDFs, it means the vector database file is currently locked by the active server process.
-Solution: Stop the Streamlit server (Ctrl+C in the terminal), delete the chroma_db folder located in your project directory, and restart the server to allow the system to build a fresh database instance.
+---
 
-👥 Developers & Team
-This project was developed as a demonstration of applying AI and RAG architectures in domain-specific applications by computer engineering students under the guidance of Professor Ramazan:
-
-Malik Fikret (Tech Lead & AI Integration)
-
-Ebru (UI/UX & System Design)
-
-Melisa (Data Pipeline & Testing)
+## 🧑🏻‍💻 Developers & Team
+This project was developed as a demonstration of applying AI and RAG architectures in domain-specific applications by computer engineering students under the guidance of **Prof. Dr. Ramazan KATIRCI**:
+* **Malik Fikret** (Tech Lead & AI Integration)
+* **Ebru Tuğçe Polat** (UI/UX & System Design)
+* **Melisa Yıldırım** (Data Pipeline & Testing)
