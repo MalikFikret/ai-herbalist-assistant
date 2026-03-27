@@ -147,7 +147,7 @@
     ]
   },
   "malikfikret": {
-    "active_chat_id": "0cbc22c3096e4d47a465b89d137f6327",
+    "active_chat_id": "254c183c25f6461cbc0f834d3e572051",
     "chats": [
       {
         "id": "86f8aa0ae110475e80f107f5ec081a34",
@@ -823,6 +823,81 @@
         "title": "New Chat",
         "created_at": "2026-03-27 13:17:03",
         "updated_at": "2026-03-27 13:17:03",
+        "messages": []
+      },
+      {
+        "id": "b6dafc3c79c24247abc1edab95e3c4ef",
+        "title": "kendini tan\u0131t",
+        "created_at": "2026-03-27 13:23:14",
+        "updated_at": "2026-03-27 13:25:43",
+        "messages": [
+          {
+            "role": "user",
+            "content": "kendini tan\u0131t",
+            "timestamp": "2026-03-27 13:23:34",
+            "sources": []
+          },
+          {
+            "role": "assistant",
+            "content": "Merhaba, kendimi tan\u0131taca\u011f\u0131m. Ben bir AI Bitki Hekimi Yard\u0131mc\u0131s\u0131 olarak geli\u015ftirildim. Malik Fikret, Ebru Tu\u011f\u00e7e Polat ve Melisa Y\u0131ld\u0131r\u0131m taraf\u0131ndan bilgisayar m\u00fchendisli\u011fi \u00f6\u011frencileri olarak geli\u015ftirildim, Prof. Dr. Ramazan KATIRCI'nin rehberli\u011finde.",
+            "timestamp": "2026-03-27 13:23:39",
+            "sources": [
+              "Medical Herbalism - The Science and Practice of Herbal Medicine (2003).pdf",
+              "Fitoterapia-WHO-01.pdf",
+              "_OceanofPDF.com_The_Green_Pharmacy_-_James_A_Duke.pdf"
+            ]
+          },
+          {
+            "role": "user",
+            "content": "ne i\u015fe yar\u0131yon",
+            "timestamp": "2026-03-27 13:24:24",
+            "sources": []
+          },
+          {
+            "role": "assistant",
+            "content": "Bilmiyorum, l\u00fctfen daha a\u00e7\u0131k bir soru sorunuz.",
+            "timestamp": "2026-03-27 13:24:24",
+            "sources": [
+              "Medical Herbalism - The Science and Practice of Herbal Medicine (2003).pdf"
+            ]
+          },
+          {
+            "role": "user",
+            "content": "bana hang\u0131 konularda yard\u0131mc\u0131 olab\u0131l\u0131rs\u0131n",
+            "timestamp": "2026-03-27 13:24:58",
+            "sources": []
+          },
+          {
+            "role": "assistant",
+            "content": "Herbalist yard\u0131mc\u0131 olarak bitkisel tarifler, do\u011fal ila\u00e7lar ve yayg\u0131n rahats\u0131zl\u0131klar (\u00f6rne\u011fin, ba\u015f a\u011fr\u0131lar\u0131, mide a\u011fr\u0131lar\u0131, so\u011fuk alg\u0131nl\u0131\u011f\u0131) konular\u0131nda yard\u0131mc\u0131 olabilirim.",
+            "timestamp": "2026-03-27 13:24:58",
+            "sources": [
+              "Fitoterapia-WHO-01.pdf",
+              "Medical Herbalism - The Science and Practice of Herbal Medicine (2003).pdf"
+            ]
+          },
+          {
+            "role": "user",
+            "content": "burnum akt\u0131 ve bas\u0131m agr\u0131yor ne yapmal\u0131uy\u0131m",
+            "timestamp": "2026-03-27 13:25:43",
+            "sources": []
+          },
+          {
+            "role": "assistant",
+            "content": "Yan\u0131k a\u011fr\u0131s\u0131 ve bas\u0131mda a\u011fr\u0131 hissediyorsan\u0131z, Plantain (Plantago) bitkisinin kullan\u0131lmas\u0131 faydal\u0131 olabilir. Bitkinin taze saplar\u0131ndan elde edilen s\u0131v\u0131, yan\u0131klar\u0131n tedavisinde geleneksel bir y\u00f6ntem olarak kullan\u0131l\u0131r.",
+            "timestamp": "2026-03-27 13:25:43",
+            "sources": [
+              "_OceanofPDF.com_The_Green_Pharmacy_-_James_A_Duke.pdf",
+              "Medical Herbalism - The Science and Practice of Herbal Medicine (2003).pdf"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "254c183c25f6461cbc0f834d3e572051",
+        "title": "New Chat",
+        "created_at": "2026-03-27 13:41:32",
+        "updated_at": "2026-03-27 13:41:32",
         "messages": []
       }
     ]
