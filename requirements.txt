@@ -1,0 +1,15 @@
+# UI Framework
+streamlit==1.32.0
+
+# AI & LLM Framework
+langchain==0.1.12
+langchain-groq==0.0.1
+langchain-community==0.0.28
+
+# Vector Database & Retrieval
+chromadb==0.4.24
+pypdf==4.1.0
+sentence-transformers==2.5.1
+
+# Environment Management
+python-dotenv==1.0.1
