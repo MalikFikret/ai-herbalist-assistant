@@ -208,6 +208,11 @@ __marimo__/
 
 # ChromaDB (Our Herbal Project Database)
 chroma_db/
+.chroma_db/
 *.sqlite3
 *.bin
 *.pickle
+
+# Local app state (per-machine; do not commit)
+.users.json
+.chat_history.json
