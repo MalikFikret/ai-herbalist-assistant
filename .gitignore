@@ -207,7 +207,6 @@ marimo/_lsp/
 __marimo__/
 
 # ChromaDB (Our Herbal Project Database)
-chroma_db/
 .chroma_db/
 *.sqlite3
 *.bin
