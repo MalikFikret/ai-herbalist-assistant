@@ -104,11 +104,11 @@ volume so chats and users survive container restarts (see the
 ## ▶️ Running the Application
 Once the setup is complete, you can start the Streamlit server:
 ```bash
-streamlit run src/herbalist_assistant/ui/streamlit_app.py
+streamlit run src/app.py --server.address 0.0.0.0 --server.port 8502
 ```
 (Note: Adjust the path above if your main execution file is named differently).
 
-The application will open automatically in your default web browser at `http://localhost:8501`.
+The application will open automatically in your default web browser at `http://localhost:8502`.
 
 ---
 
