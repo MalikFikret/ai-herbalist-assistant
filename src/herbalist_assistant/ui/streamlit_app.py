@@ -1,38 +1,83 @@
+import asyncio
 import hashlib
+import html as _html
 import json
+import logging
+import os
 import re
 import secrets
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
 
+import herbalist_assistant  # eager .env load before LangChain/LangSmith imports
+
 import streamlit as st
 import streamlit.components.v1 as components
 
-from herbalist_assistant import config
-from herbalist_assistant.types import HerbalistState
+from herbalist_assistant import config, log_langsmith_status
+from herbalist_assistant.db import ensure_database_ready
+from herbalist_assistant.db import repository as db_repository
+from herbalist_assistant.graph.advanced_graph import app as agent_graph_app
 
-from .i18n import get_string
-from .resources import get_graph, reindex_pdfs
-from .state import (
+log_langsmith_status()
+
+# Bring the SQLite schema up-to-date and run the one-time JSON -> SQLite
+# migration the first time the process starts. Both steps are idempotent,
+# so subsequent Streamlit reruns are near-instant.
+ensure_database_ready()
+
+# The relative imports below intentionally follow log_langsmith_status() so
+# the LangSmith banner is emitted before the rest of the UI layer pulls in
+# LangChain modules. Ruff flags this as E402, which we silence on purpose.
+from .i18n import get_string  # noqa: E402
+from .resources import reindex_pdfs  # noqa: E402
+from .state import (  # noqa: E402
     append_message,
     delete_chat,
     get_chat_messages,
     get_user_chat_summaries,
     init_session_state,
+    iter_all_feedback,
     set_active_chat,
     start_new_chat,
+    update_message_feedback,
 )
 
-USERS_FILE = Path(".users.json")
-ADMIN_USERNAME = "admin"
-ADMIN_PASSWORD = "1234"
+_logger = logging.getLogger("herbalist_assistant.ui")
+
+# Admin credentials are sourced from environment variables so they are NOT
+# committed in source. Supported variables (first match wins):
+#   HA_ADMIN_USERNAME          - custom admin username (default: "admin")
+#   HA_ADMIN_PASSWORD_HASH +
+#   HA_ADMIN_PASSWORD_SALT     - PBKDF2-SHA256 hash (hex) and salt (hex)
+#                                -- most secure, recommended for production
+#   HA_ADMIN_PASSWORD          - plaintext fallback, hashed in-memory only
+#
+# If NONE of these are set, we fall back to the legacy dev default ("1234")
+# and log a loud warning. Never leave this unset in a deployment.
+ADMIN_USERNAME = os.environ.get("HA_ADMIN_USERNAME", "admin").strip() or "admin"
+_ADMIN_PASSWORD_HASH_ENV = os.environ.get("HA_ADMIN_PASSWORD_HASH", "").strip()
+_ADMIN_PASSWORD_SALT_ENV = os.environ.get("HA_ADMIN_PASSWORD_SALT", "").strip()
+_ADMIN_PASSWORD_ENV = os.environ.get("HA_ADMIN_PASSWORD", "")
+_ADMIN_DEFAULT_PASSWORD = "1234"
+_ADMIN_DEFAULT_WARNING_EMITTED = False
+_ADMIN_USERNAME_SETTING_KEY = "admin_username"
+_ADMIN_PASSWORD_HASH_SETTING_KEY = "admin_password_hash"
+_ADMIN_PASSWORD_SALT_SETTING_KEY = "admin_password_salt"
+
 AVAILABLE_MODELS: List[str] = [
     "llama-3.1-8b-instant",
-    "llama-3.1-70b-versatile",
     "mixtral-8x7b-32768",
+    "gemini-1.5-flash",
+    "deepseek-chat",
 ]
+DEFAULT_MODEL = "llama-3.1-8b-instant"
+AVAILABLE_WEB_SEARCH_PROVIDERS: List[str] = ["Tavily", "DuckDuckGo"]
+DEFAULT_WEB_SEARCH_PROVIDER = "DuckDuckGo"
+# Maximum number of past messages we forward to the agent graph for memory.
+# Matches _MAX_HISTORY_MESSAGES in advanced_graph.py.
+_CHAT_HISTORY_LIMIT = 6
 
 ALLERGY_HERB_ALIASES: Dict[str, List[str]] = {
     "papatya/chamomile": ["papatya", "chamomile", "camomile", "kamille"],
@@ -45,10 +90,32 @@ ALLERGY_HERB_ALIASES: Dict[str, List[str]] = {
 }
 
 
-def _run_with_timeout(func, *args, timeout_sec: int = 90):
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(func, *args)
-        return future.result(timeout=timeout_sec)
+_AGENT_TIMEOUT_SEC = 120
+
+
+def _invoke_agent_with_timeout(
+    payload: Dict[str, Any],
+    timeout_sec: int = _AGENT_TIMEOUT_SEC,
+) -> Dict[str, Any]:
+    """Run ``agent_graph_app.ainvoke`` under an asyncio timeout.
+
+    Uses the compiled graph's native async entrypoint, wrapped in
+    ``asyncio.wait_for`` so the UI never blocks forever. On timeout we
+    raise ``TimeoutError`` so the caller can render a user-friendly message.
+    """
+
+    async def _runner() -> Dict[str, Any]:
+        return await asyncio.wait_for(
+            agent_graph_app.ainvoke(payload),
+            timeout=timeout_sec,
+        )
+
+    try:
+        return asyncio.run(_runner())
+    except asyncio.TimeoutError as exc:
+        raise TimeoutError(
+            f"Agent response exceeded {timeout_sec}s limit"
+        ) from exc
 
 
 def _truncate_chat_title(title: str, max_len: int = 34) -> str:
@@ -118,43 +185,123 @@ def _extract_blocked_herbs(allergies_text: str) -> List[str]:
     return blocked
 
 
-def _generate_ai_response(user_input: str, profile: Dict[str, str]) -> tuple[str, List[str]]:
-    """Generate answer from graph, fallback to simple local response."""
+def _collect_chat_history_for_agent() -> List[Dict[str, str]]:
+    """Return the last few chat turns, excluding the current (just-appended) user msg.
+
+    The advanced graph uses this for conversational memory so follow-up
+    questions ("how do I prepare it?") keep their referent.
+    """
+    messages = st.session_state.get("messages", []) or []
+    # The current user message has already been appended by the caller, so
+    # drop it -- it lives in the `question` state key, not in history.
+    prior = messages[:-1] if messages else []
+    trimmed = prior[-_CHAT_HISTORY_LIMIT:]
+    return [
+        {
+            "role": msg.get("role", ""),
+            "content": msg.get("content", ""),
+        }
+        for msg in trimmed
+        if msg.get("role") in ("user", "assistant") and msg.get("content")
+    ]
+
+
+def _generate_ai_response(user_input: str, profile: Dict[str, str]) -> tuple[str, List[Dict[str, Any]]]:
+    """Generate answer from advanced LangGraph app, with graceful fallback.
+
+    Returns (answer_text, sources) where ``sources`` is a list of structured
+    dicts (``{"kind": "pdf", "file": ..., "page": ...}`` today; kept flexible
+    so web URLs etc. can be added later without changing the call-site).
+    """
+    lang = st.session_state.get("language", "en")
     profile_context = _build_profile_context(profile)
     question_payload = user_input if not profile_context else f"{user_input}\n\n{profile_context}"
+    chat_history = _collect_chat_history_for_agent()
+    model_name = (
+        st.session_state.get("selected_model")
+        or DEFAULT_MODEL
+    )
+    web_search_provider = (
+        st.session_state.get("web_search_provider")
+        or DEFAULT_WEB_SEARCH_PROVIDER
+    )
 
     try:
-        with st.spinner("Preparing retrieval and model..."):
-            graph = _run_with_timeout(
-                get_graph,
-                st.session_state.selected_model,
-                timeout_sec=90,
+        with st.status(get_string(lang, "agent_status_thinking"), expanded=True) as status:
+            status.write(get_string(lang, "agent_status_routing"))
+            status.write(get_string(lang, "agent_status_searching"))
+            status.write(get_string(lang, "agent_status_grading"))
+            status.write(get_string(lang, "agent_status_generating"))
+            final_state: Dict[str, Any] = _invoke_agent_with_timeout(
+                {
+                    "question": question_payload,
+                    "chat_history": chat_history,
+                    "model_name": model_name,
+                    "web_search_provider": web_search_provider,
+                },
+                timeout_sec=_AGENT_TIMEOUT_SEC,
             )
-        with st.spinner("Thinking..."):
-            initial_state: HerbalistState = {
-                "question": question_payload,
-                "context": "",
-                "answer": "",
-                "sources": [],
-            }
-            final_state: Dict[str, Any] = _run_with_timeout(
-                graph.invoke,
-                initial_state,
-                timeout_sec=90,
+            status.update(
+                label=get_string(lang, "agent_status_done"),
+                state="complete",
+                expanded=False,
             )
-        answer = final_state.get("answer", "I'm sorry, I could not generate an answer.")
-        sources = final_state.get("sources", [])
+
+        answer = final_state.get("final_answer", "I'm sorry, I could not generate an answer.")
+        docs = final_state.get("documents", []) or []
+        sources = _extract_sources_from_docs(docs)
         answer = _dedupe_answer_lines(answer)
         return answer, sources
+    except TimeoutError:
+        _logger.warning("Agent graph timed out after %ss for question=%r", _AGENT_TIMEOUT_SEC, user_input)
+        return get_string(lang, "agent_timeout_msg"), []
     except Exception:
-        # Simple fallback to keep chat UX responsive if model call fails.
-        fallback = (
-            "I could not reach the model right now, but I received your question: "
-            f"'{user_input}'. Please try again in a moment."
-        )
+        _logger.exception("Agent graph invocation failed for question=%r", user_input)
+        fallback = get_string(lang, "agent_error_msg")
         if profile_context:
-            fallback += " I will prioritize your allergy and condition information."
+            fallback += " " + get_string(lang, "agent_error_profile_hint")
         return fallback, []
+
+
+def _extract_sources_from_docs(docs: List[Any]) -> List[Dict[str, Any]]:
+    """Turn LangChain Documents into structured, UI-friendly source entries.
+
+    Current shape:
+        {"kind": "pdf", "file": "herbs.pdf", "page": 7}
+
+    Leaves room for future kinds (e.g. ``{"kind": "url", "url": "https://..."}``)
+    without changing the public return type.
+    """
+    structured: List[Dict[str, Any]] = []
+    seen: set[tuple] = set()
+    for doc in docs:
+        meta = getattr(doc, "metadata", {}) or {}
+        url = str(meta.get("url", "")).strip()
+        if url:
+            title = str(meta.get("title", "")).strip() or str(
+                meta.get("source", "Web Search")
+            ).strip()
+            key = ("url", url)
+            if key in seen:
+                continue
+            seen.add(key)
+            structured.append({"kind": "url", "url": url, "title": title})
+            continue
+        source = str(meta.get("source", "")).strip()
+        if not source:
+            continue
+        file_name = Path(source).name
+        page_raw = meta.get("page")
+        try:
+            page_num = int(page_raw) + 1 if page_raw is not None else None
+        except (TypeError, ValueError):
+            page_num = None
+        key = (file_name, page_num)
+        if key in seen:
+            continue
+        seen.add(key)
+        structured.append({"kind": "pdf", "file": file_name, "page": page_num})
+    return structured
 
 
 def _dedupe_answer_lines(text: str) -> str:
@@ -181,35 +328,43 @@ def _inject_global_styles() -> None:
             --ha-text: var(--st-text-color, rgba(49, 51, 63, 1));
             --ha-border: var(--st-border-color, rgba(120, 120, 120, 0.22));
         }
+        html, body, [data-testid="stApp"], [data-testid="stAppViewContainer"] {
+            font-size: 16px !important;
+            zoom: 1 !important;
+            transform: none !important;
+        }
         .main .block-container {
-            max-width: 1100px;
+            width: 100%;
+            max-width: 1560px;
             padding-bottom: 2rem;
         }
         [data-testid="stAppViewContainer"] {
             background: var(--ha-bg) !important;
         }
         .ha-auth-layout {
-            --auth-panel-height: 560px;
-            max-width: 1020px;
-            margin: 0.65rem auto 0 auto;
+            --auth-panel-height: 640px;
+            max-width: 1240px;
+            margin: 0.75rem auto 0 auto;
         }
-        [data-testid="stHorizontalBlock"]:has(.ha-auth-hero) {
-            align-items: stretch !important;
-            column-gap: 12px !important;
-        }
-        [data-testid="stHorizontalBlock"]:has(.ha-auth-hero) > [data-testid="column"] {
-            display: flex;
+        .ha-auth-layout [data-testid="stHorizontalBlock"] {
             align-items: stretch;
         }
-        [data-testid="stHorizontalBlock"]:has(.ha-auth-hero) > [data-testid="column"] > div {
-            width: 100%;
+        /* Style the right column's vertical block as the auth card. */
+        .ha-auth-layout [data-testid="stHorizontalBlock"] > [data-testid="column"]:nth-of-type(2) > div[data-testid="stVerticalBlock"] {
+            background: var(--ha-bg-2) !important;
+            border: 1px solid var(--ha-border) !important;
+            border-radius: 20px;
+            padding: 1.3rem 1.3rem 1.1rem 1.3rem;
+            box-shadow: 0 10px 28px rgba(22, 61, 39, 0.08);
+            min-height: var(--auth-panel-height, 640px);
+            box-sizing: border-box;
         }
         .ha-auth-hero {
             height: 100%;
-            min-height: var(--auth-panel-height, 560px);
+            min-height: var(--auth-panel-height, 640px);
             box-sizing: border-box;
-            border-radius: 20px 0 0 20px;
-            padding: 1.8rem 1.8rem 1.45rem 1.8rem;
+            border-radius: 20px;
+            padding: 2rem 2rem 1.6rem 2rem;
             background: radial-gradient(circle at 18% 20%, #234835 0%, #1b3528 38%, #12251d 100%);
             color: #eaf5ef;
             display: flex;
@@ -217,20 +372,20 @@ def _inject_global_styles() -> None:
             justify-content: space-between;
         }
         .ha-auth-hero-brand {
-            font-size: 0.9rem;
+            font-size: 1rem;
             letter-spacing: 0.02em;
             opacity: 0.92;
         }
         .ha-auth-hero-title {
             margin-top: 1.4rem;
-            font-size: 2rem;
+            font-size: clamp(2rem, 2.2vw, 2.9rem);
             line-height: 1.22;
             font-weight: 700;
             max-width: 18ch;
         }
         .ha-auth-hero-sub {
             margin-top: 0.85rem;
-            font-size: 0.95rem;
+            font-size: 1rem;
             line-height: 1.45;
             color: #cfe6d8;
             max-width: 34ch;
@@ -244,36 +399,7 @@ def _inject_global_styles() -> None:
             margin: 0;
         }
         .ha-auth-card {
-            background: var(--ha-bg-2) !important;
-            border: 1px solid var(--ha-border) !important;
-            border-radius: 0 20px 20px 0;
-            padding: 1.2rem 1.1rem 1rem 1.1rem;
-            box-shadow: 0 10px 28px rgba(22, 61, 39, 0.08);
-            min-height: 520px;
-            max-width: 460px;
-            margin: 0 auto;
-        }
-        [data-testid="stVerticalBlockBorderWrapper"]:has(.ha-auth-logo) {
-            background: var(--ha-bg-2) !important;
-            border: 1px solid rgba(92, 168, 125, 0.25) !important;
-            border-radius: 8px 20px 20px 8px !important;
-            box-shadow: 0 10px 28px rgba(22, 61, 39, 0.08) !important;
-            min-height: var(--auth-panel-height, 560px);
-            box-sizing: border-box;
-            max-width: none;
-            width: 100%;
-            margin: 0 auto !important;
-            padding: 1.05rem 1.1rem 1rem 1.1rem !important;
-            overflow: hidden;
-        }
-        [data-testid="stVerticalBlockBorderWrapper"]:has(.ha-auth-logo) [data-testid="stVerticalBlock"] {
-            min-height: calc(var(--auth-panel-height, 560px) - 2.1rem);
-            max-width: 450px;
-            margin: 0 auto;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            gap: 0.15rem;
+            display: contents;
         }
         .ha-auth-logo {
             width: 44px;
@@ -358,14 +484,14 @@ def _inject_global_styles() -> None:
         }
         .ha-auth-right-head {
             text-align: center;
-            font-size: 1.35rem;
+            font-size: 1.9rem;
             font-weight: 700;
             color: var(--ha-text);
             margin-top: 0.1rem;
-            margin-bottom: 0.45rem;
+            margin-bottom: 0.65rem;
         }
         [data-testid="stRadio"] label p {
-            font-size: 0.95rem !important;
+            font-size: 1.05rem !important;
         }
         /* Make labels visible against white card bg */
         label, [data-testid="stMarkdownContainer"] p {
@@ -376,7 +502,7 @@ def _inject_global_styles() -> None:
             border-radius: 12px !important;
             border: 1px solid var(--ha-border) !important;
             background: var(--ha-bg-2) !important;
-            min-height: 46px;
+            min-height: 56px;
             transition: all 0.15s ease;
             overflow: hidden;
             color: var(--ha-text) !important;
@@ -407,7 +533,7 @@ def _inject_global_styles() -> None:
         }
         [data-testid="stFormSubmitButton"] > button {
             border-radius: 12px !important;
-            min-height: 46px !important;
+            min-height: 56px !important;
             background: linear-gradient(180deg, #2f9d68 0%, #2a8a5d 100%) !important;
             border: 1px solid #2a8a5d !important;
             color: #ffffff !important;
@@ -444,14 +570,9 @@ def _inject_global_styles() -> None:
         }
         @media (max-width: 980px) {
             .ha-auth-hero,
-            .ha-auth-card,
-            [data-testid="stVerticalBlockBorderWrapper"]:has(.ha-auth-logo) {
+            .ha-auth-layout [data-testid="stHorizontalBlock"] > [data-testid="column"]:nth-of-type(2) > div[data-testid="stVerticalBlock"] {
                 border-radius: 16px;
                 min-height: auto;
-            }
-            [data-testid="stVerticalBlockBorderWrapper"]:has(.ha-auth-logo) [data-testid="stVerticalBlock"] {
-                min-height: auto;
-                max-width: none;
             }
             .ha-auth-hero {
                 margin-bottom: 0.8rem;
@@ -525,7 +646,13 @@ def _init_auth_state() -> None:
     if "username" not in st.session_state:
         st.session_state.username = ""
     if "selected_model" not in st.session_state:
-        st.session_state.selected_model = config.GROQ_MODEL
+        st.session_state.selected_model = DEFAULT_MODEL
+    elif st.session_state.selected_model not in AVAILABLE_MODELS:
+        st.session_state.selected_model = DEFAULT_MODEL
+    if "web_search_provider" not in st.session_state:
+        st.session_state.web_search_provider = DEFAULT_WEB_SEARCH_PROVIDER
+    elif st.session_state.web_search_provider not in AVAILABLE_WEB_SEARCH_PROVIDERS:
+        st.session_state.web_search_provider = DEFAULT_WEB_SEARCH_PROVIDER
     if "last_index_time" not in st.session_state:
         st.session_state.last_index_time = None
     if "active_page" not in st.session_state:
@@ -538,22 +665,6 @@ def _init_auth_state() -> None:
             "allergies": "",
             "conditions": "",
         }
-
-
-def _load_users() -> Dict[str, Dict[str, str]]:
-    if not USERS_FILE.exists():
-        return {}
-    try:
-        with USERS_FILE.open("r", encoding="utf-8") as f:
-            data = json.load(f)
-        return data if isinstance(data, dict) else {}
-    except (json.JSONDecodeError, OSError):
-        return {}
-
-
-def _save_users(users: Dict[str, Dict[str, str]]) -> None:
-    with USERS_FILE.open("w", encoding="utf-8") as f:
-        json.dump(users, f, indent=2)
 
 
 def _hash_password(password: str, salt: str) -> str:
@@ -569,33 +680,46 @@ def _verify_password(password: str, password_hash: str, salt: str) -> bool:
     return _hash_password(password, salt) == password_hash
 
 
+def _admin_credentials_locked_by_env() -> bool:
+    return bool(
+        _ADMIN_PASSWORD_ENV
+        or (_ADMIN_PASSWORD_HASH_ENV and _ADMIN_PASSWORD_SALT_ENV)
+    )
+
+
+def _load_runtime_admin_credentials() -> Dict[str, str]:
+    username = db_repository.get_app_setting(_ADMIN_USERNAME_SETTING_KEY) or ADMIN_USERNAME
+    password_hash = db_repository.get_app_setting(_ADMIN_PASSWORD_HASH_SETTING_KEY) or ""
+    salt = db_repository.get_app_setting(_ADMIN_PASSWORD_SALT_SETTING_KEY) or ""
+    return {
+        "username": username.strip() or ADMIN_USERNAME,
+        "password_hash": password_hash.strip(),
+        "salt": salt.strip(),
+    }
+
+
 def _register_user(username: str, password: str, confirm_password: str) -> str:
     username = username.strip()
     if not username or not password or not confirm_password:
         return "All fields are required."
     if password != confirm_password:
         return "Passwords do not match."
-    if username == ADMIN_USERNAME:
+    admin_username = _load_runtime_admin_credentials()["username"]
+    if username == admin_username:
         return "This username is reserved."
 
-    users = _load_users()
-    if username in users:
+    if db_repository.user_exists(username):
         return "User already exists."
 
     salt = secrets.token_hex(16)
-    users[username] = {
-        "password_hash": _hash_password(password, salt),
-        "salt": salt,
-        "role": "user",
-        "profile": {
-            "name": "",
-            "age": "",
-            "gender": "",
-            "allergies": "",
-            "conditions": "",
-        },
-    }
-    _save_users(users)
+    created = db_repository.create_user(
+        username=username,
+        password_hash=_hash_password(password, salt),
+        salt=salt,
+        role="user",
+    )
+    if not created:
+        return "User already exists."
     return "Account created successfully. You can now log in."
 
 
@@ -607,18 +731,54 @@ def _reset_user_password(username: str, new_password: str, confirm_password: str
         return "Passwords do not match."
     if len(new_password) < 4:
         return "Password must be at least 4 characters."
-    if username == ADMIN_USERNAME:
+    admin_username = _load_runtime_admin_credentials()["username"]
+    if username == admin_username:
         return "Admin password reset is disabled in this screen."
 
-    users = _load_users()
-    if username not in users:
-        return "User not found."
-
     salt = secrets.token_hex(16)
-    users[username]["password_hash"] = _hash_password(new_password, salt)
-    users[username]["salt"] = salt
-    _save_users(users)
+    updated = db_repository.reset_user_password(
+        username=username,
+        password_hash=_hash_password(new_password, salt),
+        salt=salt,
+    )
+    if not updated:
+        return "User not found."
     return "Password reset successful. You can now log in."
+
+
+def _verify_admin_password(password: str) -> bool:
+    """Verify the admin password against the most secure source available.
+
+    Order of precedence:
+      1. HA_ADMIN_PASSWORD_HASH + HA_ADMIN_PASSWORD_SALT (PBKDF2-SHA256).
+      2. HA_ADMIN_PASSWORD (plaintext in env, compared with constant time).
+      3. Hardcoded dev default "1234" (with a WARNING log).
+    """
+    global _ADMIN_DEFAULT_WARNING_EMITTED
+
+    if _ADMIN_PASSWORD_HASH_ENV and _ADMIN_PASSWORD_SALT_ENV:
+        expected = _ADMIN_PASSWORD_HASH_ENV
+        actual = _hash_password(password, _ADMIN_PASSWORD_SALT_ENV)
+        return secrets.compare_digest(expected, actual)
+
+    if _ADMIN_PASSWORD_ENV:
+        return secrets.compare_digest(_ADMIN_PASSWORD_ENV, password)
+
+    runtime_creds = _load_runtime_admin_credentials()
+    runtime_hash = runtime_creds.get("password_hash", "")
+    runtime_salt = runtime_creds.get("salt", "")
+    if runtime_hash and runtime_salt:
+        actual = _hash_password(password, runtime_salt)
+        return secrets.compare_digest(runtime_hash, actual)
+
+    if not _ADMIN_DEFAULT_WARNING_EMITTED:
+        _logger.warning(
+            "Admin is using the insecure DEFAULT password. "
+            "Set HA_ADMIN_PASSWORD (or HA_ADMIN_PASSWORD_HASH + "
+            "HA_ADMIN_PASSWORD_SALT) in your environment before deploying."
+        )
+        _ADMIN_DEFAULT_WARNING_EMITTED = True
+    return secrets.compare_digest(_ADMIN_DEFAULT_PASSWORD, password)
 
 
 def _authenticate_user(username: str, password: str) -> Dict[str, str]:
@@ -626,13 +786,13 @@ def _authenticate_user(username: str, password: str) -> Dict[str, str]:
     if not username or not password:
         return {"status": "error", "message": "Username and password are required."}
 
-    if username == ADMIN_USERNAME:
-        if password == ADMIN_PASSWORD:
+    admin_username = _load_runtime_admin_credentials()["username"]
+    if username == admin_username:
+        if _verify_admin_password(password):
             return {"status": "ok", "role": "admin"}
         return {"status": "error", "message": "Wrong password."}
 
-    users = _load_users()
-    record = users.get(username)
+    record = db_repository.get_user_auth(username)
     if not record:
         return {"status": "error", "message": "User not found."}
 
@@ -706,11 +866,11 @@ def _render_auth_screen() -> None:
     if "auth_mode" not in st.session_state:
         st.session_state.auth_mode = "Login"
 
-    left_col, right_col = st.columns([1.03, 1], gap="small")
+    st.markdown('<div class="ha-auth-layout">', unsafe_allow_html=True)
+    left_col, right_col = st.columns([1, 1], gap="large")
+
     hero_foot = get_string(lang, "hero_foot")
-    hero_foot_html = (
-        f'<div class="ha-auth-hero-foot">{hero_foot}</div>' if hero_foot else ""
-    )
+    hero_foot_html = f'<div class="ha-auth-hero-foot">{hero_foot}</div>' if hero_foot else ""
 
     with left_col:
         st.markdown(
@@ -719,9 +879,7 @@ def _render_auth_screen() -> None:
                 <div>
                     <div class="ha-auth-hero-brand">{get_string(lang, "hero_brand")}</div>
                     <div class="ha-auth-hero-title">{get_string(lang, "hero_title")}</div>
-                    <div class="ha-auth-hero-sub">
-                        {get_string(lang, "hero_sub")}
-                    </div>
+                    <div class="ha-auth-hero-sub">{get_string(lang, "hero_sub")}</div>
                 </div>
                 {hero_foot_html}
             </div>
@@ -730,105 +888,138 @@ def _render_auth_screen() -> None:
         )
 
     with right_col:
-        with st.container(border=True):
-            st.markdown('<div class="ha-auth-logo">🌿</div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="ha-auth-right-head">{get_string(lang, "get_started")}</div>', unsafe_allow_html=True)
-            if st.session_state.auth_mode not in {"Login", "Register", "Reset Password"}:
-                st.session_state.auth_mode = "Login"
+        langs = {"en": "English", "tr": "Türkçe"}
+        new_lang = st.selectbox(
+            "Language / Dil",
+            options=list(langs.keys()),
+            format_func=lambda x: langs[x],
+            index=list(langs.keys()).index(lang),
+            key="language_selector_login",
+            label_visibility="collapsed",
+        )
+        if new_lang != lang:
+            st.session_state.language = new_lang
+            st.rerun()
 
-            auth_mode = st.session_state.auth_mode
-            if auth_mode == "Reset Password":
-                st.markdown(
-                    f'<div class="ha-auth-subtitle">{get_string(lang, "reset_subtitle")}</div>',
-                    unsafe_allow_html=True,
+        st.markdown('<div class="ha-auth-logo">🌿</div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="ha-auth-right-head">{get_string(lang, "get_started")}</div>',
+            unsafe_allow_html=True,
+        )
+
+        if st.session_state.auth_mode not in {"Login", "Register", "Reset Password"}:
+            st.session_state.auth_mode = "Login"
+
+        auth_mode = st.session_state.auth_mode
+        if auth_mode == "Reset Password":
+            st.markdown(
+                f'<div class="ha-auth-subtitle">{get_string(lang, "reset_subtitle")}</div>',
+                unsafe_allow_html=True,
+            )
+            with st.form("reset_password_form", clear_on_submit=True):
+                reset_username = st.text_input(get_string(lang, "username"), key="reset_username")
+                new_password = st.text_input(
+                    get_string(lang, "new_password"),
+                    type="password",
+                    key="reset_new_password",
                 )
-                with st.form("reset_password_form", clear_on_submit=True):
-                    reset_username = st.text_input(get_string(lang, "username"), key="reset_username")
-                    new_password = st.text_input(
-                        get_string(lang, "new_password"),
+                confirm_new_password = st.text_input(
+                    get_string(lang, "confirm_new_password"),
+                    type="password",
+                    key="reset_confirm_new_password",
+                )
+                submit_reset = st.form_submit_button(
+                    get_string(lang, "reset_pwd_btn"),
+                    type="primary",
+                    use_container_width=True,
+                )
+
+            if submit_reset:
+                result = _reset_user_password(reset_username, new_password, confirm_new_password)
+                if result.startswith("Password reset successful"):
+                    st.success(result)
+                    st.session_state.auth_mode = "Login"
+                    st.rerun()
+                else:
+                    st.error(result)
+
+            if st.button(get_string(lang, "back_to_login"), use_container_width=True):
+                st.session_state.auth_mode = "Login"
+                st.rerun()
+        else:
+            st.markdown(
+                f'<div class="ha-auth-subtitle">{get_string(lang, "auth_subtitle")}</div>',
+                unsafe_allow_html=True,
+            )
+            tab_login, tab_register = st.tabs(
+                [get_string(lang, "login_btn"), get_string(lang, "create_account")]
+            )
+
+            with tab_login:
+                with st.form("login_form", clear_on_submit=False):
+                    username = st.text_input(get_string(lang, "username"), key="login_username")
+                    password = st.text_input(
+                        get_string(lang, "password"),
                         type="password",
-                        key="reset_new_password",
+                        key="login_password",
                     )
-                    confirm_new_password = st.text_input(
-                        get_string(lang, "confirm_new_password"),
-                        type="password",
-                        key="reset_confirm_new_password",
-                    )
-                    submit_reset = st.form_submit_button(
-                        get_string(lang, "reset_pwd_btn"),
+                    submit_login = st.form_submit_button(
+                        get_string(lang, "login_btn"),
                         type="primary",
                         use_container_width=True,
                     )
 
-                if submit_reset:
-                    result = _reset_user_password(reset_username, new_password, confirm_new_password)
-                    if result.startswith("Password reset successful"):
-                        st.success(result)
-                        st.session_state.auth_mode = "Login"
-                        st.rerun()
-                    else:
-                        st.error(result)
-
-                if st.button(get_string(lang, "back_to_login"), use_container_width=True):
-                    st.session_state.auth_mode = "Login"
+                st.markdown('<div class="ha-forgot-link">', unsafe_allow_html=True)
+                if st.button(get_string(lang, "forgot_pwd"), use_container_width=False):
+                    st.session_state.auth_mode = "Reset Password"
                     st.rerun()
-            else:
-                st.markdown(
-                    f'<div class="ha-auth-subtitle">{get_string(lang, "auth_subtitle")}</div>',
-                    unsafe_allow_html=True,
-                )
-                tab_login, tab_register = st.tabs([get_string(lang, "login_btn"), get_string(lang, "create_account")])
-                
-                with tab_login:
-                    with st.form("login_form", clear_on_submit=False):
-                        username = st.text_input(get_string(lang, "username"), key="login_username")
-                        password = st.text_input(get_string(lang, "password"), type="password", key="login_password")
-                        submit_login = st.form_submit_button(get_string(lang, "login_btn"), type="primary", use_container_width=True)
-                    
-                    st.markdown('<div class="ha-forgot-link">', unsafe_allow_html=True)
-                    if st.button(get_string(lang, "forgot_pwd"), use_container_width=False):
-                        st.session_state.auth_mode = "Reset Password"
-                        st.rerun()
-                    st.markdown('</div>', unsafe_allow_html=True)
+                st.markdown("</div>", unsafe_allow_html=True)
 
-                with tab_register:
-                    with st.form("register_form", clear_on_submit=True):
-                        reg_username = st.text_input(get_string(lang, "username"), key="register_username")
-                        reg_password = st.text_input(get_string(lang, "password"), type="password", key="register_password")
-                        reg_confirm = st.text_input(
-                            get_string(lang, "confirm_password"),
-                            type="password",
-                            key="register_confirm_password",
-                        )
-                        submit_register = st.form_submit_button(
-                            get_string(lang, "create_account"),
-                            type="primary",
-                            use_container_width=True,
-                        )
+            with tab_register:
+                with st.form("register_form", clear_on_submit=True):
+                    reg_username = st.text_input(get_string(lang, "username"), key="register_username")
+                    reg_password = st.text_input(
+                        get_string(lang, "password"),
+                        type="password",
+                        key="register_password",
+                    )
+                    reg_confirm = st.text_input(
+                        get_string(lang, "confirm_password"),
+                        type="password",
+                        key="register_confirm_password",
+                    )
+                    submit_register = st.form_submit_button(
+                        get_string(lang, "create_account"),
+                        type="primary",
+                        use_container_width=True,
+                    )
 
-                if submit_login:
-                    auth = _authenticate_user(username, password)
-                    if auth.get("status") != "ok":
-                        st.error(auth.get("message", "Login failed."))
-                    else:
-                        st.session_state.is_logged_in = True
-                        st.session_state.username = username.strip()
-                        st.session_state.role = auth.get("role", "user")
-                        st.session_state.user_profile = _get_user_profile(st.session_state.username)
-                        if st.session_state.role == "user":
-                            start_new_chat(st.session_state.username)
-                            _sync_conversations_to_session(st.session_state.username)
-                        st.session_state.active_page = "Admin Panel" if st.session_state.role == "admin" else "Chat"
-                        st.success("Login successful.")
-                        st.rerun()
-                        
-                if submit_register:
-                    result = _register_user(reg_username, reg_password, reg_confirm)
-                    if result.startswith("Account created"):
-                        st.success(result)
-                    else:
-                        st.error(result)
+            if submit_login:
+                auth = _authenticate_user(username, password)
+                if auth.get("status") != "ok":
+                    st.error(auth.get("message", "Login failed."))
+                else:
+                    st.session_state.is_logged_in = True
+                    st.session_state.username = username.strip()
+                    st.session_state.role = auth.get("role", "user")
+                    st.session_state.user_profile = _get_user_profile(st.session_state.username)
+                    if st.session_state.role == "user":
+                        start_new_chat(st.session_state.username)
+                        _sync_conversations_to_session(st.session_state.username)
+                    st.session_state.active_page = (
+                        "Admin Panel" if st.session_state.role == "admin" else "Chat"
+                    )
+                    st.success("Login successful.")
+                    st.rerun()
 
+            if submit_register:
+                result = _register_user(reg_username, reg_password, reg_confirm)
+                if result.startswith("Account created"):
+                    st.success(result)
+                else:
+                    st.error(result)
+
+    st.markdown("</div>", unsafe_allow_html=True)
 
 def _render_chat_page() -> None:
     lang = st.session_state.get("language", "en")
@@ -855,15 +1046,20 @@ def _render_chat_page() -> None:
     has_user_msg = any(m["role"] == "user" for m in st.session_state.messages)
     will_have_user_msg = has_user_msg or bool(user_input)
 
-    for msg in st.session_state.messages:
+    for idx, msg in enumerate(st.session_state.messages):
         if msg["role"] == "assistant":
             if "Hello! I am your 🌿 AI Herbalist" in msg["content"] or "Merhaba! Ben sizin 🌿" in msg["content"]:
                 continue
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
-            sources = msg.get("sources", [])
-            if msg["role"] == "assistant" and sources:
-                st.caption(f"Sources: {', '.join(sources)}")
+            if msg["role"] == "assistant":
+                _render_assistant_action_row(
+                    lang=lang,
+                    username=username,
+                    chat_id=active_chat_id,
+                    message_index=idx,
+                    message=msg,
+                )
 
     if not will_have_user_msg:
         with st.chat_message("assistant"):
@@ -886,11 +1082,250 @@ def _render_chat_page() -> None:
         st.markdown(user_input)
 
     answer, sources = _generate_ai_response(user_input, st.session_state.get("user_profile", {}))
+    assistant_index = append_message(
+        role="assistant",
+        content=answer,
+        username=username,
+        sources=sources,
+    )
+    # Re-fetch in case append_message re-synced session state with extras (feedback=None).
+    assistant_msg = (
+        st.session_state.messages[assistant_index]
+        if 0 <= assistant_index < len(st.session_state.messages)
+        else {"content": answer, "sources": sources, "feedback": None}
+    )
     with st.chat_message("assistant"):
         st.markdown(answer)
-        if sources:
-            st.caption(f"Sources: {', '.join(sources)}")
-    append_message(role="assistant", content=answer, username=username, sources=sources)
+        _render_assistant_action_row(
+            lang=lang,
+            username=username,
+            chat_id=st.session_state.get("active_chat_id", ""),
+            message_index=assistant_index,
+            message=assistant_msg,
+        )
+
+
+def _normalize_sources(sources: List[Any]) -> List[Dict[str, Any]]:
+    """Accept both the legacy string shape and the new dict shape.
+
+    Returns a list of dicts ready for the Sources popover. The schema is
+    intentionally kept flexible so new ``kind`` values (e.g. ``"url"``) can
+    be added without breaking existing chat history.
+    """
+    normalized: List[Dict[str, Any]] = []
+    for src in sources or []:
+        if isinstance(src, dict):
+            if not src.get("kind"):
+                src = {"kind": "pdf", **src}
+            normalized.append(src)
+        elif isinstance(src, str) and src.strip():
+            normalized.append({"kind": "pdf", "file": src.strip(), "page": None})
+    return normalized
+
+
+def _source_entry_label(src: Dict[str, Any]) -> str:
+    kind = str(src.get("kind") or "pdf").lower()
+    if kind == "url":
+        title = str(src.get("title") or src.get("url") or "Link").strip()
+        return title
+    file_name = str(src.get("file") or "unknown")
+    page = src.get("page")
+    return f"{file_name} (p. {page})" if page is not None else file_name
+
+
+def _render_sources_popover(
+    *,
+    lang: str,
+    sources: List[Any],
+    message_index: int,
+) -> None:
+    """Render the Sources popover with one entry per source, keyed for uniqueness."""
+    normalized = _normalize_sources(sources)
+    if not normalized:
+        return
+
+    label_template = get_string(lang, "sources_btn")
+    if not isinstance(label_template, str):
+        label_template = "Sources ({count})"
+    popover_label = label_template.format(count=len(normalized))
+
+    try:
+        container = st.popover(popover_label, use_container_width=False)
+    except AttributeError:
+        # Older Streamlit: fall back to an expander so nothing breaks.
+        container = st.expander(popover_label, expanded=False)
+
+    with container:
+        for idx, src in enumerate(normalized, start=1):
+            kind = str(src.get("kind") or "pdf").lower()
+            if kind == "url" and src.get("url"):
+                label = str(src.get("title") or src["url"]).strip() or str(src["url"])
+                st.markdown(f"{idx}. [{label}]({src['url']})")
+            else:
+                st.markdown(f"{idx}. **{_source_entry_label(src)}**")
+
+
+def _render_copy_button(
+    *,
+    text: str,
+    key: str,
+    label: str,
+) -> None:
+    """Render a small HTML+JS clipboard button.
+
+    Streamlit has no native copy button, and ``st.code`` with its built-in
+    copy icon would re-render the full answer as monospace. Instead we
+    embed a tiny JS component sized to match the rest of the action row.
+    """
+    safe_text = json.dumps(text, ensure_ascii=False)
+    safe_label = _html.escape(label)
+    confirm_text = _html.escape(_copy_confirm_text())
+    components.html(
+        f"""
+        <div style=\"display:flex;\">
+          <button id=\"{key}\"
+            style=\"
+              border: 1px solid rgba(120,120,120,0.35);
+              background: var(--background-color, #ffffff);
+              color: var(--text-color, #222);
+              border-radius: 8px;
+              padding: 4px 10px;
+              font-size: 0.85rem;
+              cursor: pointer;
+              display: inline-flex;
+              align-items: center;
+              gap: 6px;
+            \">
+            <span>{safe_label}</span>
+          </button>
+          <script>
+            (function() {{
+              const btn = document.getElementById(\"{key}\");
+              if (!btn) return;
+              btn.addEventListener(\"click\", async function () {{
+                try {{
+                  await navigator.clipboard.writeText({safe_text});
+                }} catch (err) {{
+                  const ta = document.createElement(\"textarea\");
+                  ta.value = {safe_text};
+                  document.body.appendChild(ta);
+                  ta.select();
+                  try {{ document.execCommand(\"copy\"); }} catch (e) {{}}
+                  document.body.removeChild(ta);
+                }}
+                const previous = btn.innerText;
+                btn.innerText = \"{confirm_text}\";
+                setTimeout(function () {{ btn.innerText = previous; }}, 1200);
+              }});
+            }})();
+          </script>
+        </div>
+        """,
+        height=40,
+    )
+
+
+def _copy_confirm_text() -> str:
+    lang = st.session_state.get("language", "en")
+    return get_string(lang, "copy_done")
+
+
+def _render_feedback_controls(
+    *,
+    lang: str,
+    username: str,
+    chat_id: str,
+    message_index: int,
+    current: str | None,
+) -> None:
+    """Render the 👍 / 👎 pair. Clicking toggles (click-again clears)."""
+    up_label = "👍" if current != "up" else "✅ 👍"
+    down_label = "👎" if current != "down" else "✅ 👎"
+    base_key = f"fb_{chat_id}_{message_index}"
+
+    col_up, col_down = st.columns([1, 1])
+    with col_up:
+        if st.button(
+            up_label,
+            key=f"{base_key}_up",
+            help=get_string(lang, "feedback_up_help"),
+            use_container_width=True,
+        ):
+            new_value: str | None = None if current == "up" else "up"
+            if update_message_feedback(
+                username=username,
+                chat_id=chat_id,
+                message_index=message_index,
+                feedback=new_value,
+            ):
+                st.toast(get_string(lang, "feedback_saved"))
+                st.rerun()
+    with col_down:
+        if st.button(
+            down_label,
+            key=f"{base_key}_down",
+            help=get_string(lang, "feedback_down_help"),
+            use_container_width=True,
+        ):
+            new_value = None if current == "down" else "down"
+            if update_message_feedback(
+                username=username,
+                chat_id=chat_id,
+                message_index=message_index,
+                feedback=new_value,
+            ):
+                st.toast(get_string(lang, "feedback_saved"))
+                st.rerun()
+
+
+def _render_assistant_action_row(
+    *,
+    lang: str,
+    username: str,
+    chat_id: str,
+    message_index: int,
+    message: Dict[str, Any],
+) -> None:
+    """Render the [Copy] [Sources] [👍] [👎] row under an assistant message."""
+    if not chat_id:
+        return
+
+    content = str(message.get("content", ""))
+    sources = message.get("sources", []) or []
+    current_feedback = message.get("feedback")
+
+    has_sources = bool(_normalize_sources(sources))
+    # 4 compact button-width columns, then a flexible spacer so the buttons
+    # stay tight on wide screens.
+    col_copy, col_src, col_fb, spacer = st.columns([1.2, 1.6, 1.6, 5])
+
+    with col_copy:
+        _render_copy_button(
+            text=content,
+            key=f"copy_{chat_id}_{message_index}",
+            label=get_string(lang, "copy_btn"),
+        )
+
+    with col_src:
+        if has_sources:
+            _render_sources_popover(
+                lang=lang,
+                sources=sources,
+                message_index=message_index,
+            )
+        else:
+            st.caption(get_string(lang, "no_sources"))
+
+    with col_fb:
+        _render_feedback_controls(
+            lang=lang,
+            username=username,
+            chat_id=chat_id,
+            message_index=message_index,
+            current=current_feedback,
+        )
+
+    del spacer  # reserved column, intentionally unused
 
 
 def _render_admin_panel() -> None:
@@ -964,77 +1399,83 @@ def _render_admin_panel() -> None:
             else:
                 st.info(get_string(lang, "no_pdf"))
 
-        with st.container(border=True):
-            st.markdown(get_string(lang, "model_selection"))
-            selected_model = st.selectbox(
-                get_string(lang, "choose_model"),
-                options=AVAILABLE_MODELS,
-                index=AVAILABLE_MODELS.index(st.session_state.selected_model)
-                if st.session_state.selected_model in AVAILABLE_MODELS
-                else 0,
-                key="admin_model_select",
-            )
-            st.session_state.selected_model = selected_model
-
-
-def _render_history_page() -> None:
-    lang = st.session_state.get("language", "en")
-    username = st.session_state.username
-    init_session_state(username)
-    st.markdown(f'<div class="ha-section-title">{get_string(lang, "history")}</div>', unsafe_allow_html=True)
     st.markdown(
-        f'<div class="ha-section-subtitle">{get_string(lang, "history_desc")}</div>',
+        f'<div class="ha-section-title" style="margin-top:1.2rem;">'
+        f'{get_string(lang, "feedback_log_title")}</div>',
         unsafe_allow_html=True,
     )
+    st.markdown(
+        f'<div class="ha-section-subtitle">{get_string(lang, "feedback_log_desc")}</div>',
+        unsafe_allow_html=True,
+    )
+    _render_admin_feedback_log(lang=lang)
 
-    chats = get_user_chat_summaries(username)
-    if not chats:
-        st.info(get_string(lang, "no_history"))
+
+def _render_admin_feedback_log(*, lang: str) -> None:
+    """Flat, newest-first list of 👍/👎 signals across every user and chat."""
+    entries = iter_all_feedback()
+    if not entries:
+        st.info(get_string(lang, "feedback_log_empty"))
         return
 
-    for idx, chat in enumerate(reversed(chats), start=1):
-        title = chat.get("title", get_string(lang, "new_chat"))
-        updated_at = chat.get("updated_at", "-")
-        chat_id = chat.get("id", "")
-        with st.expander(f"{idx}. {title}  ({updated_at})", expanded=idx == 1):
-            col_info, col_action = st.columns([4, 1])
-            with col_info:
+    ups = sum(1 for e in entries if e.get("feedback") == "up")
+    downs = sum(1 for e in entries if e.get("feedback") == "down")
+
+    filter_label = get_string(lang, "feedback_log_filter")
+    filter_options = {
+        "all": get_string(lang, "feedback_log_filter_all"),
+        "up": get_string(lang, "feedback_log_filter_up"),
+        "down": get_string(lang, "feedback_log_filter_down"),
+    }
+    selected_filter = st.radio(
+        filter_label,
+        options=list(filter_options.keys()),
+        format_func=lambda k: filter_options[k],
+        horizontal=True,
+        key="admin_feedback_filter",
+    )
+
+    total_col, up_col, down_col = st.columns(3)
+    with total_col:
+        st.metric(get_string(lang, "feedback_log_total"), len(entries))
+    with up_col:
+        st.metric("👍", ups)
+    with down_col:
+        st.metric("👎", downs)
+
+    filtered = (
+        entries
+        if selected_filter == "all"
+        else [e for e in entries if e.get("feedback") == selected_filter]
+    )
+
+    if not filtered:
+        st.info(get_string(lang, "feedback_log_empty"))
+        return
+
+    for entry in filtered:
+        icon = "👍" if entry.get("feedback") == "up" else "👎"
+        title = (
+            f"{icon}  "
+            f"{entry.get('username', '?')}"
+            f" · {_truncate_chat_title(entry.get('chat_title', ''), 40)}"
+            f" · {entry.get('feedback_at', '') or entry.get('timestamp', '')}"
+        )
+        with st.expander(title, expanded=False):
+            question = entry.get("question") or ""
+            if question:
+                st.markdown(f"**{get_string(lang, 'feedback_log_question')}**")
+                st.markdown(question)
+            st.markdown(f"**{get_string(lang, 'feedback_log_answer')}**")
+            st.markdown(entry.get("answer", ""))
+            sources = entry.get("sources", []) or []
+            normalized_sources = _normalize_sources(sources)
+            if normalized_sources:
                 st.caption(
-                    f"Messages: {chat.get('message_count', 0)} | Created: {chat.get('created_at', '-')}"
+                    get_string(lang, "feedback_log_sources")
+                    + ": "
+                    + ", ".join(_source_entry_label(s) for s in normalized_sources)
                 )
-            with col_action:
-                if st.button(get_string(lang, "open_btn"), key=f"open_chat_{chat_id}", use_container_width=True):
-                    if set_active_chat(username, chat_id):
-                        st.session_state.active_page = "Chat"
-                        st.rerun()
-
-            messages = get_chat_messages(username, chat_id)
-            turns = []
-            i = 0
-            while i < len(messages):
-                msg = messages[i]
-                if msg.get("role") != "user":
-                    i += 1
-                    continue
-                user_msg = msg
-                assistant_msg = None
-                if i + 1 < len(messages) and messages[i + 1].get("role") == "assistant":
-                    assistant_msg = messages[i + 1]
-                    i += 2
-                else:
-                    i += 1
-                turns.append((user_msg, assistant_msg))
-
-            if not turns:
-                st.caption("No user messages yet in this chat.")
-            for user_msg, assistant_msg in turns:
-                st.markdown(f"**User:** {user_msg.get('content', '')}")
-                if assistant_msg:
-                    st.markdown(f"**Assistant:** {assistant_msg.get('content', '')}")
-                    sources = assistant_msg.get("sources", [])
-                    if sources:
-                        st.markdown(f"**Sources:** {', '.join(sources)}")
-                st.divider()
 
 
 def _render_about_page() -> None:
@@ -1045,32 +1486,11 @@ def _render_about_page() -> None:
 
 
 def _get_user_profile(username: str) -> Dict[str, str]:
-    users = _load_users()
-    record = users.get(username, {})
-    profile = record.get("profile", {}) if isinstance(record, dict) else {}
-    return {
-        "name": profile.get("name", profile.get("full_name", "")),
-        "age": profile.get("age", ""),
-        "gender": profile.get("gender", ""),
-        "allergies": profile.get("allergies", ""),
-        "conditions": profile.get("conditions", profile.get("notes", "")),
-    }
+    return db_repository.get_user_profile(username)
 
 
 def _save_user_profile(username: str, profile: Dict[str, str]) -> bool:
-    users = _load_users()
-    if username not in users:
-        return False
-
-    users[username]["profile"] = {
-        "name": profile.get("name", "").strip(),
-        "age": profile.get("age", "").strip(),
-        "gender": profile.get("gender", "").strip(),
-        "allergies": profile.get("allergies", "").strip(),
-        "conditions": profile.get("conditions", "").strip(),
-    }
-    _save_users(users)
-    return True
+    return db_repository.save_user_profile(username, profile)
 
 
 def _render_profile_page() -> None:
@@ -1144,6 +1564,7 @@ def run() -> None:
     st.set_page_config(
         page_title="AI Herbalist Assistant",
         page_icon="🌿",
+        layout="wide",
         initial_sidebar_state="expanded",
     )
     _inject_global_styles()
@@ -1152,24 +1573,10 @@ def run() -> None:
     lang = st.session_state.get("language", "en")
 
     if not st.session_state.is_logged_in:
-        # Language selector: visible on the login screen.
-        top_left, top_right = st.columns([8, 2], gap="small")
-        with top_right:
-            langs = {"en": "English", "tr": "Türkçe"}
-            new_lang = st.selectbox(
-                "Language / Dil",
-                options=list(langs.keys()),
-                format_func=lambda x: langs[x],
-                index=list(langs.keys()).index(lang),
-                key="language_selector_login",
-                label_visibility="collapsed",
-            )
-            if new_lang != lang:
-                st.session_state.language = new_lang
-                st.rerun()
-
         _render_auth_screen()
         return
+        
+    # The rest of your run() code remains exactly as it is below this line...
 
     if st.session_state.role == "user":
         st.session_state.user_profile = _get_user_profile(st.session_state.username)
@@ -1180,6 +1587,28 @@ def run() -> None:
     with st.sidebar:
         st.markdown(get_string(lang, "sidebar_nav"))
         st.caption(f"**{st.session_state.username}**")
+
+        with st.expander("Advanced Settings", expanded=False):
+            selected_model = st.selectbox(
+                "LLM Model",
+                options=AVAILABLE_MODELS,
+                index=AVAILABLE_MODELS.index(st.session_state.selected_model)
+                if st.session_state.selected_model in AVAILABLE_MODELS
+                else AVAILABLE_MODELS.index(DEFAULT_MODEL),
+                key="sidebar_selected_model",
+            )
+            st.session_state.selected_model = selected_model
+            web_search_provider = st.radio(
+                "Web Search Provider",
+                options=AVAILABLE_WEB_SEARCH_PROVIDERS,
+                index=AVAILABLE_WEB_SEARCH_PROVIDERS.index(
+                    st.session_state.web_search_provider
+                )
+                if st.session_state.web_search_provider in AVAILABLE_WEB_SEARCH_PROVIDERS
+                else AVAILABLE_WEB_SEARCH_PROVIDERS.index(DEFAULT_WEB_SEARCH_PROVIDER),
+                key="sidebar_web_search_provider",
+            )
+            st.session_state.web_search_provider = web_search_provider
 
         if st.session_state.role == "admin":
             sections = ["Admin Panel", "Chat"]

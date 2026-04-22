@@ -215,3 +215,8 @@ __marimo__/
 # Local app state (per-machine; do not commit)
 .users.json
 .chat_history.json
+# SQLite store that replaced the JSON files in the P1 migration.
+.herbalist.db
+.herbalist.db-journal
+# Post-migration JSON backups left behind by db/migration.py
+*.migrated-backup-*

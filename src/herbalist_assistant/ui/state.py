@@ -1,236 +1,133 @@
-import json
-import uuid
-from datetime import datetime
-from pathlib import Path
-from typing import Any, Dict, List
+"""Session-state glue between Streamlit and the SQLite-backed repository.
+
+The public function names and signatures here match the pre-DB version
+so ``streamlit_app.py`` did not need to change when we migrated. All
+reads/writes go through :mod:`herbalist_assistant.db.repository`; the
+only thing we keep in ``st.session_state`` is a snapshot of the active
+chat for fast rendering.
+"""
+
+from __future__ import annotations
+
+from typing import Any
 
 import streamlit as st
 
-CHAT_HISTORY_FILE = Path(".chat_history.json")
+from herbalist_assistant.db import repository
+
+# ---------------------------------------------------------------------------
+# Session-state snapshot helpers
+# ---------------------------------------------------------------------------
 
 
-def _now_str() -> str:
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+def _user_key(username: str) -> str:
+    return (username or "").strip() or "guest"
 
 
-def _default_messages() -> List[Dict[str, Any]]:
-    return []
+def _refresh_snapshot(user_key: str) -> None:
+    """Pull the user's active chat + chat list from the DB into session_state.
+
+    This is how the sidebar chat list and the main chat pane stay in
+    sync with the database after any mutation.
+    """
+    active = repository.load_active_chat(user_key)
+    summaries = repository.get_user_chat_summaries(user_key)
+
+    st.session_state.messages = list(active["messages"])
+    st.session_state.messages_owner = user_key
+    st.session_state.active_chat_id = active["active_chat_id"]
+    st.session_state.user_chats = summaries
 
 
-def _new_chat(*, title: str = "New Chat") -> Dict[str, Any]:
-    timestamp = _now_str()
-    return {
-        "id": uuid.uuid4().hex,
-        "title": title,
-        "created_at": timestamp,
-        "updated_at": timestamp,
-        "messages": _default_messages(),
-    }
-
-
-def _load_history_store() -> Dict[str, Any]:
-    if not CHAT_HISTORY_FILE.exists():
-        return {}
-    try:
-        with CHAT_HISTORY_FILE.open("r", encoding="utf-8") as f:
-            data = json.load(f)
-        if isinstance(data, dict):
-            return data
-    except (json.JSONDecodeError, OSError):
-        pass
-    return {}
-
-
-def _save_history_store(store: Dict[str, Any]) -> None:
-    with CHAT_HISTORY_FILE.open("w", encoding="utf-8") as f:
-        json.dump(store, f, ensure_ascii=True, indent=2)
-
-
-def _normalize_user_history(user_history: Any) -> Dict[str, Any]:
-    # Backward compatibility: old format was just a list of messages.
-    if isinstance(user_history, list):
-        migrated_chat = _new_chat(title="Previous Chat")
-        migrated_chat["messages"] = user_history if user_history else _default_messages()
-        return {
-            "active_chat_id": migrated_chat["id"],
-            "chats": [migrated_chat],
-        }
-
-    if not isinstance(user_history, dict):
-        chat = _new_chat()
-        return {"active_chat_id": chat["id"], "chats": [chat]}
-
-    chats = user_history.get("chats")
-    if not isinstance(chats, list) or not chats:
-        chat = _new_chat()
-        user_history["chats"] = [chat]
-        user_history["active_chat_id"] = chat["id"]
-        return user_history
-
-    for chat in chats:
-        chat.setdefault("id", uuid.uuid4().hex)
-        chat.setdefault("title", "New Chat")
-        chat.setdefault("created_at", _now_str())
-        chat.setdefault("updated_at", chat.get("created_at", _now_str()))
-        chat.setdefault("messages", _default_messages())
-
-    if user_history.get("active_chat_id") not in {c["id"] for c in chats}:
-        user_history["active_chat_id"] = chats[-1]["id"]
-
-    return user_history
-
-
-def _get_or_create_user_history(store: Dict[str, Any], username: str) -> Dict[str, Any]:
-    user_key = username.strip() or "guest"
-    normalized = _normalize_user_history(store.get(user_key))
-    store[user_key] = normalized
-    return normalized
-
-
-def _set_active_chat_session(username: str, user_history: Dict[str, Any]) -> None:
-    active_chat_id = user_history.get("active_chat_id")
-    active_chat = next(
-        (chat for chat in user_history.get("chats", []) if chat.get("id") == active_chat_id),
-        None,
-    )
-    if active_chat is None:
-        active_chat = user_history["chats"][-1]
-        user_history["active_chat_id"] = active_chat["id"]
-
-    st.session_state.messages = active_chat.get("messages", _default_messages())
-    st.session_state.messages_owner = username
-    st.session_state.active_chat_id = active_chat["id"]
-    st.session_state.user_chats = [
-        {
-            "id": chat["id"],
-            "title": chat.get("title", "New Chat"),
-            "created_at": chat.get("created_at", "-"),
-            "updated_at": chat.get("updated_at", "-"),
-            "message_count": len(chat.get("messages", [])),
-        }
-        for chat in user_history.get("chats", [])
-    ]
+# ---------------------------------------------------------------------------
+# Public API (called by streamlit_app.py)
+# ---------------------------------------------------------------------------
 
 
 def init_session_state(username: str) -> None:
-    user_key = username.strip() or "guest"
-    history_store = _load_history_store()
-    user_history = _get_or_create_user_history(history_store, user_key)
-    _save_history_store(history_store)
-
-    if st.session_state.get("messages_owner") != user_key or "messages" not in st.session_state:
-        _set_active_chat_session(user_key, user_history)
-    else:
-        # Refresh chat list metadata for sidebar/history views.
-        _set_active_chat_session(user_key, user_history)
+    """Ensure session_state reflects the user's chats in the DB."""
+    user_key = _user_key(username)
+    _refresh_snapshot(user_key)
 
 
-def append_message(*, role: str, content: str, username: str, sources: List[str] | None = None) -> None:
-    if "messages" not in st.session_state:
-        init_session_state(username)
+def append_message(
+    *,
+    role: str,
+    content: str,
+    username: str,
+    sources: list[dict[str, Any]] | list[str] | None = None,
+) -> int:
+    """Append a message to the active chat. Returns its position (index)."""
+    user_key = _user_key(username)
+    if "messages" not in st.session_state or st.session_state.get("messages_owner") != user_key:
+        _refresh_snapshot(user_key)
 
-    message = {
-        "role": role,
-        "content": content,
-        "timestamp": _now_str(),
-        "sources": sources or [],
-    }
-    st.session_state.messages.append(message)
+    active_chat_id = st.session_state.get("active_chat_id")
+    result = repository.append_message(
+        username=user_key,
+        chat_id=active_chat_id,
+        role=role,
+        content=content,
+        sources=list(sources) if sources else [],
+    )
+    _refresh_snapshot(user_key)
+    return int(result["position"])
 
-    user_key = username.strip() or "guest"
-    history_store = _load_history_store()
-    user_history = _get_or_create_user_history(history_store, user_key)
-    active_chat_id = st.session_state.get("active_chat_id", user_history["active_chat_id"])
 
-    for chat in user_history["chats"]:
-        if chat["id"] == active_chat_id:
-            chat["messages"] = st.session_state.messages
-            chat["updated_at"] = _now_str()
-            if role == "user" and chat.get("title", "New Chat") == "New Chat":
-                preview = content.strip().splitlines()[0][:50]
-                chat["title"] = preview or "New Chat"
-            break
+def update_message_feedback(
+    *,
+    username: str,
+    chat_id: str,
+    message_index: int,
+    feedback: str | None,
+) -> bool:
+    user_key = _user_key(username)
+    ok = repository.update_message_feedback(
+        username=user_key,
+        chat_id=chat_id,
+        message_index=message_index,
+        feedback=feedback,
+    )
+    if not ok:
+        return False
+    if (
+        st.session_state.get("active_chat_id") == chat_id
+        and st.session_state.get("messages_owner") == user_key
+    ):
+        _refresh_snapshot(user_key)
+    return True
 
-    user_history["active_chat_id"] = active_chat_id
-    history_store[user_key] = user_history
-    _save_history_store(history_store)
-    _set_active_chat_session(user_key, user_history)
+
+def iter_all_feedback() -> list[dict[str, Any]]:
+    return repository.iter_all_feedback()
 
 
 def start_new_chat(username: str) -> str:
-    user_key = username.strip() or "guest"
-    history_store = _load_history_store()
-    user_history = _get_or_create_user_history(history_store, user_key)
-
-    new_chat = _new_chat()
-    user_history["chats"].append(new_chat)
-    user_history["active_chat_id"] = new_chat["id"]
-    history_store[user_key] = user_history
-    _save_history_store(history_store)
-    _set_active_chat_session(user_key, user_history)
-    return new_chat["id"]
+    user_key = _user_key(username)
+    chat_id = repository.start_new_chat(user_key)
+    _refresh_snapshot(user_key)
+    return chat_id
 
 
-def get_user_chat_summaries(username: str) -> List[Dict[str, Any]]:
-    user_key = username.strip() or "guest"
-    history_store = _load_history_store()
-    user_history = _get_or_create_user_history(history_store, user_key)
-    history_store[user_key] = user_history
-    _save_history_store(history_store)
-    return [
-        {
-            "id": chat["id"],
-            "title": chat.get("title", "New Chat"),
-            "created_at": chat.get("created_at", "-"),
-            "updated_at": chat.get("updated_at", "-"),
-            "message_count": len(chat.get("messages", [])),
-        }
-        for chat in user_history.get("chats", [])
-    ]
+def get_user_chat_summaries(username: str) -> list[dict[str, Any]]:
+    return repository.get_user_chat_summaries(_user_key(username))
 
 
-def get_chat_messages(username: str, chat_id: str) -> List[Dict[str, Any]]:
-    user_key = username.strip() or "guest"
-    history_store = _load_history_store()
-    user_history = _get_or_create_user_history(history_store, user_key)
-    chat = next((item for item in user_history["chats"] if item["id"] == chat_id), None)
-    return chat.get("messages", []) if chat else []
+def get_chat_messages(username: str, chat_id: str) -> list[dict[str, Any]]:
+    return repository.get_chat_messages(_user_key(username), chat_id)
 
 
 def set_active_chat(username: str, chat_id: str) -> bool:
-    user_key = username.strip() or "guest"
-    history_store = _load_history_store()
-    user_history = _get_or_create_user_history(history_store, user_key)
-    if chat_id not in {chat["id"] for chat in user_history["chats"]}:
-        return False
-
-    user_history["active_chat_id"] = chat_id
-    history_store[user_key] = user_history
-    _save_history_store(history_store)
-    _set_active_chat_session(user_key, user_history)
-    return True
+    user_key = _user_key(username)
+    ok = repository.set_active_chat(user_key, chat_id)
+    if ok:
+        _refresh_snapshot(user_key)
+    return ok
 
 
 def delete_chat(username: str, chat_id: str) -> bool:
-    user_key = username.strip() or "guest"
-    history_store = _load_history_store()
-    user_history = _get_or_create_user_history(history_store, user_key)
-
-    original_count = len(user_history["chats"])
-    user_history["chats"] = [chat for chat in user_history["chats"] if chat.get("id") != chat_id]
-    if len(user_history["chats"]) == original_count:
-        return False
-
-    # Never leave the user without a chat.
-    if not user_history["chats"]:
-        fresh = _new_chat()
-        user_history["chats"] = [fresh]
-        user_history["active_chat_id"] = fresh["id"]
-    elif user_history.get("active_chat_id") == chat_id:
-        user_history["active_chat_id"] = user_history["chats"][-1]["id"]
-
-    history_store[user_key] = user_history
-    _save_history_store(history_store)
-    _set_active_chat_session(user_key, user_history)
-    return True
-
+    user_key = _user_key(username)
+    ok = repository.delete_chat(user_key, chat_id)
+    if ok:
+        _refresh_snapshot(user_key)
+    return ok

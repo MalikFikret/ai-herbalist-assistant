@@ -1,0 +1,77 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "herbalist-assistant"
+version = "0.1.0"
+description = "AI Herbalist Assistant - LangGraph RAG agent over a herbal knowledge base."
+requires-python = ">=3.10"
+readme = "README.md"
+dependencies = [
+    # UI framework
+    "streamlit>=1.38.0,<2.0.0",
+    # LangChain 1.x stack + LangGraph
+    "langchain>=1.0.0,<2.0.0",
+    "langchain-core>=1.0.0,<2.0.0",
+    "langchain-community>=0.4.0,<0.5.0",
+    "langchain-google-genai",
+    "langchain-openai",
+    "langchain-tavily-search",
+    "langchain-text-splitters>=1.0.0,<2.0.0",
+    "langchain-groq>=1.0.0,<2.0.0",
+    "langchain-huggingface>=1.0.0,<2.0.0",
+    "langchain-chroma>=1.0.0,<2.0.0",
+    "langgraph>=1.0.0,<2.0.0",
+    "langgraph-cli[inmem]>=0.1.55",
+    "pydantic>=2.7.0,<3.0.0",
+    # Vector DB & retrieval
+    "chromadb>=1.0.20,<2.0.0",
+    "pypdf>=4.1.0,<6.0.0",
+    "sentence-transformers>=2.6.0,<6.0.0",
+    "duckduckgo-search",
+    # OpenTelemetry alignment pins. chromadb pulls opentelemetry-* as
+    # transitive deps, but pip does NOT keep them on the same minor version.
+    # Mixing (e.g. proto-grpc 1.27 with proto-common 1.38) breaks chromadb at
+    # import time with:
+    #   ImportError: cannot import name '_create_exp_backoff_generator'
+    # Pinning all four here forces a consistent minor-version set.
+    "opentelemetry-api>=1.38.0,<2.0.0",
+    "opentelemetry-sdk>=1.38.0,<2.0.0",
+    "opentelemetry-exporter-otlp-proto-common>=1.38.0,<2.0.0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.38.0,<2.0.0",
+    # HTTP (used by the LangSmith health probe in herbalist_assistant/__init__.py)
+    "requests>=2.31.0,<3.0.0",
+    # Environment management
+    "python-dotenv>=1.0.1,<2.0.0",
+    # Persistence: SQLite via SQLAlchemy (replaces the legacy JSON store).
+    "sqlalchemy>=2.0.30,<3.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0,<9.0.0",
+    "pytest-asyncio>=0.23.0,<1.0.0",
+    "ruff>=0.5.0,<1.0.0",
+    "mypy>=1.10.0,<2.0.0",
+    "pre-commit>=3.7.0,<5.0.0",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+warn_unused_ignores = true

@@ -9,7 +9,7 @@ This project utilizes a Retrieval-Augmented Generation (RAG) architecture to ans
 
 ## ⚙️ Prerequisites
 Before you begin, ensure you have the following installed on your machine:
-* **Python 3.9+**
+* **Python 3.10+**
 * **Git**
 
 ---
@@ -44,15 +44,60 @@ pip install -r requirements.txt
 ```
 
 ### 4. Setup Environment Variables ⚠️
-The application uses the Groq API for its language model processing. **The application will fail to run without a valid API key.**
+The application uses various LLM providers (Groq, DeepSeek, Google) and web search APIs (Tavily).
 
-1. Go to the [Groq Console](https://console.groq.com/) and create a free account.
-2. Generate a new API Key.
-3. In the root directory of this project, create a new file and name it exactly `.env`
-4. Open the `.env` file and add your API key in the following format:
+1. Acquire your API keys from the respective providers (e.g., [Groq Console](https://console.groq.com/), DeepSeek, Google AI Studio, Tavily).
+2. In the root directory of this project, create a new file and name it exactly `.env`
+3. Open the `.env` file and add your API keys (and, for deployments, admin
+   credentials) in the following format:
 ```env
-GROQ_API_KEY=your_api_key_here
+GROQ_API_KEY=your_groq_api_key_here
+DEEPSEEK_API_KEY=your_deepseek_api_key_here
+GEMINI_API_KEY=your_gemini_api_key_here
+TAVILY_API_KEY=your_tavily_api_key_here
+
+# Admin credentials (recommended for any non-local deployment).
+# If HA_ADMIN_PASSWORD is not set, the app falls back to the insecure
+# default "1234" and emits a warning in the server log.
+HA_ADMIN_USERNAME=admin
+HA_ADMIN_PASSWORD=change-me-before-deploying
+
+# Or use hashed mode (recommended):
+# HA_ADMIN_PASSWORD_HASH=<generated-hex-hash>
+# HA_ADMIN_PASSWORD_SALT=<generated-hex-salt>
+
+# Optional: LangSmith tracing
+# LANGSMITH_TRACING=true
+# LANGSMITH_API_KEY=lsv2_...
+# LANGSMITH_PROJECT=AI-Herbalist-Assistant
+
+# Optional: override the SQLite file location.
+# Defaults to `.herbalist.db` in the repo root.
+# HA_DB_PATH=/var/data/herbalist.db
 ```
+
+To generate secure hash/salt values for admin password, run:
+```bash
+python scripts/generate_admin_password_hash.py
+```
+Then copy the printed `HA_ADMIN_PASSWORD_HASH` and `HA_ADMIN_PASSWORD_SALT`
+into your `.env` (and remove `HA_ADMIN_PASSWORD`).
+
+---
+
+## 🗄️ Data persistence
+All users, chat sessions, messages, sources and 👍 / 👎 feedback are
+stored in a local SQLite database (`.herbalist.db` by default). The
+schema is managed by SQLAlchemy and created automatically on first
+startup. If you are upgrading from an older build that used
+`.users.json` / `.chat_history.json`, those files are imported into
+SQLite on the next run and then renamed to
+`*.migrated-backup-<timestamp>` — keep them around until you've
+verified everything, then delete at your leisure.
+
+For production deployments, mount `.herbalist.db` on a persistent
+volume so chats and users survive container restarts (see the
+`Dockerfile` and `SECURITY.md`).
 
 ---
 

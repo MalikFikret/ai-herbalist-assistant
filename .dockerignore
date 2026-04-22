@@ -1,0 +1,55 @@
+# Version control
+.git
+.gitignore
+.gitattributes
+.github
+
+# Secrets and local state (must NEVER be baked into the image)
+.env
+.env.*
+.users.json
+.chat_history.json
+# Legacy JSON files are renamed to *.migrated-backup-* after migration.
+*.migrated-backup-*
+# SQLite store (mount at runtime if you want persistence).
+.herbalist.db
+.herbalist.db-journal
+
+# Virtual environments and build artifacts
+.venv
+venv
+env
+.eggs
+build
+dist
+*.egg-info
+.mypy_cache
+.pytest_cache
+.ruff_cache
+.pyre
+.pytype
+__pycache__
+
+# Local runtime data (mount as a volume instead)
+.chroma_db
+data
+
+# Editor / tooling
+.vscode
+.idea
+.cursor*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docs/infra that aren't needed at runtime
+tests
+.devcontainer
+docs
+
+# Transient
+*.log
+*.tmp
+*.bak
+.Trash-0

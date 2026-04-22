@@ -1,0 +1,7 @@
+{
+    "dependencies": ["."],
+    "graphs": {
+        "agent": "./src/herbalist_assistant/graph/advanced_graph.py:app"
+    },
+    "env": ".env"
+}

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from langchain_community.vectorstores import Chroma
+from langchain_chroma import Chroma
 
 from .loaders import load_pdf_documents
 from .splitter import split_documents
