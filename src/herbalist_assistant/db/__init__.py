@@ -3,7 +3,7 @@
 The public surface of this package is intentionally tiny: callers should
 go through :mod:`herbalist_assistant.db.repository` for all reads/writes.
 :mod:`engine` owns connection + session lifecycle, :mod:`models` declares
-the ORM mapping, and :mod:`migration` runs the one-time JSON ➜ SQLite
+the ORM mapping, and :mod:`migration` runs the one-time JSON -> SQLite
 import.
 """
 

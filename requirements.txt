@@ -11,7 +11,7 @@ langchain-core>=1.0.0,<2.0.0
 langchain-community>=0.4.0,<0.5.0
 langchain-google-genai
 langchain-openai
-langchain-tavily-search
+langchain-tavily 
 langchain-text-splitters>=1.0.0,<2.0.0
 langchain-groq>=1.0.0,<2.0.0
 langchain-huggingface>=1.0.0,<2.0.0
