@@ -1867,28 +1867,40 @@ def _inject_global_styles() -> None:
             padding-left: 0.85rem !important;
             padding-right: 0.85rem !important;
         }
-        /* Sidebar: position: relative ki içindeki absolute konumlu login bloğu
-           en alta yapışabilsin. Block-container'a ise login bloğunun altta
-           kalacağı kadar bottom padding veriyoruz, böylece üstteki içerik
-           login bloğu altında kaybolmasın. */
+        /* Sidebar: position: relative + tam viewport yüksekliği. Bu sayede
+           içindeki absolute konumlu login bloğu (bottom: 0) gerçek viewport
+           dibine yapışır, içerik kısa olsa bile yukarıya kaymaz.
+           stSidebarUserContent ve block-container ek positioning context
+           oluşturmaması için sıfırlanır. Block-container'a ise login
+           bloğunun altta kalacağı kadar bottom padding veriyoruz. */
         [data-testid="stSidebar"] {
             position: relative !important;
+            min-height: 100vh !important;
+            height: 100vh !important;
+        }
+        [data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {
+            position: static !important;
+            min-height: 100% !important;
+            height: auto !important;
+        }
+        [data-testid="stSidebar"] .block-container {
+            min-height: 100vh !important;
         }
         [data-testid="stSidebar"] .block-container:has(.st-key-ha_sidebar_login_row) {
-            padding-bottom: 11.5rem !important;
+            padding-bottom: 12rem !important;
         }
-        /* Login satırı (açıklama + buton) sidebar'ın gerçek diptaki kenarına
-           absolute olarak yapıştırılır. Bu sayede flex zincirine bağımlı değil. */
+        /* Login satırı (başlık + açıklama + buton) sidebar'ın TAM dipine
+           absolute olarak yapıştırılır. left/right 0 + bottom 0 → kenarlarla
+           ve alt kenarla flush. İç padding ile içeriği konumluyoruz. */
         [data-testid="stSidebar"] [data-testid="stElementContainer"]:has(> .st-key-ha_sidebar_login_row),
         [data-testid="stSidebar"] [data-testid="stElementContainer"]:has(.st-key-ha_sidebar_login_row) {
             position: absolute !important;
-            left: 0.85rem !important;
-            right: 0.85rem !important;
-            bottom: 0.6rem !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
             width: auto !important;
             margin: 0 !important;
-            padding-top: 0.85rem !important;
-            padding-bottom: 0 !important;
+            padding: 0.85rem 0.85rem 0.85rem 0.85rem !important;
             border-top: 1px solid var(--ha-border) !important;
             background: var(--ha-sidebar-bg) !important;
             z-index: 5 !important;
@@ -2039,38 +2051,81 @@ def _inject_global_styles() -> None:
             border: none !important;
             border-top: 1px solid var(--ha-border) !important;
         }
-        [data-testid="stSidebar"] button[kind="primary"] {
-            background: #ffffff !important;
+        /* Sidebar butonları: ChatGPT tarzı minimal — kutu/border yok,
+           sola hizalı icon + label, sadece hover'da yumuşak yuvarlatılmış
+           pill arkaplan. Bu kural Login CTA butonu HARİÇ tüm sidebar
+           butonlarına uygulanır (Login kendi style'ını aşağıda override eder). */
+        [data-testid="stSidebar"] button[kind="primary"],
+        [data-testid="stSidebar"] button[kind="secondary"],
+        [data-testid="stSidebar"] [data-testid="stButton"] button {
+            background: transparent !important;
             background-image: none !important;
-            border: 1px solid var(--ha-border) !important;
+            border: 1px solid transparent !important;
             color: var(--ha-text) !important;
             -webkit-text-fill-color: var(--ha-text) !important;
-            border-radius: 10px !important;
-            min-height: 2.2rem !important;
-            font-size: 0.85rem !important;
-            font-weight: 550 !important;
-            padding-left: 0.75rem !important;
-            padding-right: 0.75rem !important;
-            box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04) !important;
+            border-radius: 8px !important;
+            min-height: 2.1rem !important;
+            font-size: 0.92rem !important;
+            font-weight: 500 !important;
+            padding: 0.4rem 0.6rem !important;
+            box-shadow: none !important;
+            text-align: left !important;
+            justify-content: flex-start !important;
         }
         [data-testid="stSidebar"] button[kind="primary"] p,
-        [data-testid="stSidebar"] button[kind="primary"] span {
+        [data-testid="stSidebar"] button[kind="primary"] span,
+        [data-testid="stSidebar"] button[kind="secondary"] p,
+        [data-testid="stSidebar"] button[kind="secondary"] span {
             color: var(--ha-text) !important;
             -webkit-text-fill-color: var(--ha-text) !important;
+            font-weight: 500 !important;
         }
-        [data-testid="stSidebar"] button[kind="primary"]:hover {
-            background: #f3f3f4 !important;
+        /* Material icon görünümü */
+        [data-testid="stSidebar"] [data-testid="stButton"] button [data-testid="stIconMaterial"],
+        [data-testid="stSidebar"] [data-testid="stButton"] button .material-symbols-rounded {
+            color: var(--ha-text-soft) !important;
+            margin-right: 0.45rem !important;
+            font-size: 1.05rem !important;
+        }
+        [data-testid="stSidebar"] button[kind="primary"]:hover,
+        [data-testid="stSidebar"] button[kind="secondary"]:hover,
+        [data-testid="stSidebar"] [data-testid="stButton"] button:hover {
+            background: rgba(0, 0, 0, 0.05) !important;
             filter: none !important;
-            border-color: rgba(0, 0, 0, 0.12) !important;
+            border-color: transparent !important;
+            box-shadow: none !important;
         }
-        [data-testid="stSidebar"] button[kind="secondary"] {
-            min-height: 2.05rem !important;
-            font-size: 0.83rem !important;
-            border-radius: 9px !important;
-            border: 1px solid var(--ha-border) !important;
-            background: #ffffff !important;
+        [data-testid="stSidebar"] [data-testid="stButton"] button:hover [data-testid="stIconMaterial"] {
             color: var(--ha-text) !important;
-            -webkit-text-fill-color: var(--ha-text) !important;
+        }
+
+        /* Sidebar dipindeki Login (CTA) butonu prominent kalsın — minimal
+           kuralı override ederek koyu pill stilini geri veriyoruz. */
+        .st-key-ha_sidebar_login_btn button {
+            background: #2c2c2c !important;
+            background-image: none !important;
+            border: 1px solid #2c2c2c !important;
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+            border-radius: 10px !important;
+            min-height: 2.4rem !important;
+            font-size: 0.92rem !important;
+            font-weight: 600 !important;
+            padding: 0.55rem 0.85rem !important;
+            text-align: center !important;
+            justify-content: center !important;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08) !important;
+        }
+        .st-key-ha_sidebar_login_btn button p,
+        .st-key-ha_sidebar_login_btn button span {
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+            font-weight: 600 !important;
+        }
+        .st-key-ha_sidebar_login_btn button:hover {
+            background: #1f1f1f !important;
+            border-color: #1f1f1f !important;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12) !important;
         }
         [data-testid="stSidebar"] .ha-sidebar-title {
             font-size: 0.78rem;
@@ -4450,7 +4505,13 @@ def run() -> None:
                     key="ha_nav_user",
                 )
                 st.session_state.active_page = selected_section
-                if st.button(get_string(lang, "new_chat"), use_container_width=True, type="primary"):
+                if st.button(
+                    get_string(lang, "new_chat"),
+                    use_container_width=True,
+                    type="primary",
+                    icon=":material/edit_square:",
+                    key="ha_sidebar_new_chat",
+                ):
                     start_new_chat(st.session_state.username)
                     _sync_conversations_to_session(st.session_state.username)
                     st.session_state.active_page = "Chat"
@@ -4492,7 +4553,12 @@ def run() -> None:
                                 _sync_conversations_to_session(st.session_state.username)
                                 st.session_state.active_page = "Chat"
                                 st.rerun()
-                        if st.button(get_string(lang, "delete_chat"), use_container_width=True):
+                        if st.button(
+                            get_string(lang, "delete_chat"),
+                            use_container_width=True,
+                            icon=":material/delete:",
+                            key="ha_sidebar_delete_chat",
+                        ):
                             if delete_chat(st.session_state.username, selected_chat_id):
                                 _sync_conversations_to_session(st.session_state.username)
                                 st.session_state.active_page = "Chat"
@@ -4557,7 +4623,12 @@ def run() -> None:
                         st.rerun()
 
             if st.session_state.is_logged_in:
-                if st.button(get_string(lang, "logout"), use_container_width=True):
+                if st.button(
+                    get_string(lang, "logout"),
+                    use_container_width=True,
+                    icon=":material/logout:",
+                    key="ha_sidebar_logout",
+                ):
                     _logout()
 
     selected_section = st.session_state.get("active_page", "Chat")
