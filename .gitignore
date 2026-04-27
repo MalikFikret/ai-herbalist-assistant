@@ -220,3 +220,7 @@ __marimo__/
 .herbalist.db-journal
 # Post-migration JSON backups left behind by db/migration.py
 *.migrated-backup-*
+
+*.db 
+*.egg-info/
+*.pyc

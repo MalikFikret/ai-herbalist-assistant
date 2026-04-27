@@ -12,9 +12,9 @@ DB_PATH = Path(".herbalist.db")
 LEGACY_USERS_JSON = Path(".users.json")
 LEGACY_CHAT_HISTORY_JSON = Path(".chat_history.json")
 
-CHUNK_SIZE = 1000
-CHUNK_OVERLAP = 200
-RETRIEVER_K = 4
+CHUNK_SIZE = 550
+CHUNK_OVERLAP = 100
+RETRIEVER_K = 3
 
 LLM_TEMPERATURE = 0.2
 

@@ -1,4 +1,4 @@
-"""Phase 4: full LangGraph integration for the agentic RAG workflow.
+"""Full LangGraph integration for the agentic RAG workflow.
 
 This graph stitches together:
 1) Router node (medical vs direct conversation),
@@ -44,6 +44,8 @@ _MAX_HISTORY_MESSAGES = 6
 _GROQ_MODELS = {"llama-3.1-8b-instant", "mixtral-8x7b-32768"}
 _DEFAULT_WEB_SEARCH_PROVIDER = "DuckDuckGo"
 _WEB_SEARCH_RESULT_LIMIT = 4
+# Cap documents sent to the CRAG grading loop to limit serial LLM calls.
+_MAX_GRADE_DOCS = 8
 
 
 class AgentState(TypedDict, total=False):
@@ -100,8 +102,9 @@ Return only JSON:
 
 GRADER_SYSTEM = """You are a strict relevance grader for herbal-health RAG.
 
-Decide if a document contains ANY information that helps answer the user query.
-Answer "yes" for any meaningful overlap; answer "no" only when unrelated.
+Decide if a document EXPLICITLY contains information that directly answers the user query.
+Answer "yes" ONLY if the document is highly relevant and directly helps form the answer.
+Answer "no" if the document is only vaguely related, general, or does not contain the specific answer.
 
 Return only JSON:
 {"score": "yes"} or {"score": "no"}"""
@@ -142,7 +145,7 @@ STRICT RULES:
 6. CREATORS AND IDENTITY: If the user asks who made you, who created you, who
    your founders are, or asks for your full identity, answer naturally in the
    user's language that you were developed by computer engineering students
-   Malik Fikret, Ebru Tugce Polat, and Melisa Yildirim under the guidance of
+   Malik Fikret, Ebru Tuğçe Polat, and Melisa Yıldırım under the guidance of
    Prof. Dr. Ramazan KATIRCI.
 7. TONE AND FORMAT: Calm, practical, concise. Use short paragraphs or tidy
    bullet points where helpful. Never bulletize a greeting.
@@ -159,12 +162,16 @@ Rules:
    Assistant and invite herbal questions.
 4) If the user asks who made you, who created you, who your founders are, or
    asks for your full identity, answer clearly in the user's language:
-   Developed by computer engineering students Malik Fikret, Ebru Tugce Polat,
-   and Melisa Yildirim, under the guidance of Prof. Dr. Ramazan KATIRCI.
+   Developed by computer engineering students Malik Fikret, Ebru Tuğçe Polat,
+   and Melisa Yıldırım, under the guidance of Prof. Dr. Ramazan KATIRCI.
 5) Do NOT invent product claims.
 6) Do NOT add medical disclaimers, warnings, or advice to "consult a doctor".
 7) Use the recent conversation turns to keep the reply coherent with the
-   user's previous messages."""
+   user's previous messages.
+8) OUT OF DOMAIN: If the user asks a question completely unrelated to herbs,
+   plants, wellness, or your identity (e.g., coding, math, general knowledge,
+   cars), politely decline. Tell them you are an AI Herbalist Assistant and can
+   ONLY answer questions related to herbal and natural remedies."""
 
 
 def _strip_fences(raw: str) -> str:
@@ -276,22 +283,22 @@ def _create_chat_model(*, model_name: str, temperature: float):
     )
 
 
-@lru_cache(maxsize=32)
+@lru_cache(maxsize=8)
 def _router_llm(model_name: str):
     return _create_chat_model(model_name=model_name, temperature=0.0)
 
 
-@lru_cache(maxsize=32)
+@lru_cache(maxsize=8)
 def _expansion_llm(model_name: str):
-    return _create_chat_model(model_name=model_name, temperature=0.6)
+    return _create_chat_model(model_name=model_name, temperature=0.4)
 
 
-@lru_cache(maxsize=32)
+@lru_cache(maxsize=8)
 def _grader_llm(model_name: str):
     return _create_chat_model(model_name=model_name, temperature=0.0)
 
 
-@lru_cache(maxsize=32)
+@lru_cache(maxsize=8)
 def _generator_llm(model_name: str):
     return _create_chat_model(model_name=model_name, temperature=config.LLM_TEMPERATURE)
 
@@ -487,9 +494,9 @@ def _grade_document(question: str, document_text: str, *, model_name: str) -> Sc
         )
         return _extract_score(getattr(response, "content", str(response)))
     except Exception:
-        _logger.exception("Grader LLM failed; keeping document (defaulting to 'yes')")
-        # Fail-open: keep the document rather than drop it on a transient error.
-        return "yes"
+        _logger.exception("Grader LLM failed; rejecting document (defaulting to 'no')")
+        # Fail-closed: drop the document on a transient error so web search can trigger.
+        return "no"
 
 
 def grade_documents_node(state: AgentState) -> AgentState:
@@ -499,12 +506,22 @@ def grade_documents_node(state: AgentState) -> AgentState:
     if not question or not documents:
         return {"documents": []}
 
+    # Cap documents to avoid excessive serial LLM grading calls.
+    if len(documents) > _MAX_GRADE_DOCS:
+        _logger.info(
+            "Capping grading candidates from %d to %d",
+            len(documents),
+            _MAX_GRADE_DOCS,
+        )
+        documents = documents[:_MAX_GRADE_DOCS]
+
     model_name = _resolve_model_name(state)
     filtered: list[Document] = []
     for doc in documents:
         if _grade_document(question, doc.page_content, model_name=model_name) == "yes":
             filtered.append(doc)
-    return {"documents": filtered}
+    # Cap the final selected documents to top 3 to prevent LLM context overload
+    return {"documents": filtered[:3]}
 
 
 def _build_context(documents: list[Document]) -> str:
@@ -584,22 +601,16 @@ def web_search_node(state: AgentState) -> AgentState:
     """Fallback web search when all local docs are filtered out."""
     question = str(state.get("question", "")).strip()
     if not question:
-        return {}
+        return {"documents": []}
 
     provider_name = _resolve_web_search_provider(state)
     try:
         if provider_name == "Tavily":
-            from langchain_tavily_search import TavilySearchResults
+            from langchain_tavily import TavilySearch
 
-            tavily_api_key = _get_required_env("TAVILY_API_KEY")
-            try:
-                search_tool = TavilySearchResults(
-                    max_results=_WEB_SEARCH_RESULT_LIMIT,
-                    tavily_api_key=tavily_api_key,
-                )
-            except TypeError:
-                os.environ["TAVILY_API_KEY"] = tavily_api_key
-                search_tool = TavilySearchResults(max_results=_WEB_SEARCH_RESULT_LIMIT)
+            # TavilySearch reads the key from TAVILY_API_KEY env var.
+            _get_required_env("TAVILY_API_KEY")  # raises early if missing
+            search_tool = TavilySearch(max_results=_WEB_SEARCH_RESULT_LIMIT)
             raw_results = search_tool.invoke(question)
         else:
             provider_name = _DEFAULT_WEB_SEARCH_PROVIDER
@@ -607,11 +618,11 @@ def web_search_node(state: AgentState) -> AgentState:
             raw_results = search_tool.invoke(question)
     except Exception:
         _logger.exception("Web search failed with provider=%s", provider_name)
-        return {}
+        return {"documents": []}
 
     web_docs = _normalize_web_search_results(raw_results, provider_name=provider_name)
     if not web_docs:
-        return {}
+        return {"documents": []}
     return {"documents": web_docs}
 
 
