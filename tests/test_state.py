@@ -18,14 +18,6 @@ def fresh_db(tmp_path, monkeypatch):
     """Point the DB at a per-test SQLite file and bounce the engine cache."""
     db_file = tmp_path / "herbalist.db"
     monkeypatch.setenv("HA_DB_PATH", str(db_file))
-    # Isolate the JSON migration from the real repo so a stray legacy
-    # file in the workspace can't be touched by test startup.
-    from herbalist_assistant import config as _config
-
-    monkeypatch.setattr(_config, "LEGACY_USERS_JSON", tmp_path / ".users.json", raising=False)
-    monkeypatch.setattr(
-        _config, "LEGACY_CHAT_HISTORY_JSON", tmp_path / ".chat_history.json", raising=False
-    )
 
     for mod in [
         "herbalist_assistant.ui.state",

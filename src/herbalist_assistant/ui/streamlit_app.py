@@ -25,9 +25,8 @@ from herbalist_assistant.graph.advanced_graph import app as agent_graph_app
 
 log_langsmith_status()
 
-# Bring the SQLite schema up-to-date and run the one-time JSON -> SQLite
-# migration the first time the process starts. Both steps are idempotent,
-# so subsequent Streamlit reruns are near-instant.
+# Bring the SQLite schema up-to-date. Idempotent, so subsequent
+# Streamlit reruns are near-instant.
 ensure_database_ready()
 
 # The relative imports below intentionally follow log_langsmith_status() so
