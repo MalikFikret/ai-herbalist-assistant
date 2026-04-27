@@ -3,6 +3,9 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+# Local-only auto-fill credential cache (do NOT commit)
+data/.remembered_logins.json
+
 # C extensions
 *.so
 

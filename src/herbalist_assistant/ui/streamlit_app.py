@@ -1,15 +1,17 @@
 import asyncio
 import base64
 import hashlib
+import hmac
 import html as _html
 import json
 import logging
 import os
 import re
 import secrets
-from datetime import datetime
+import time
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import herbalist_assistant  # eager .env load before LangChain/LangSmith imports
 
@@ -49,6 +51,8 @@ _logger = logging.getLogger("herbalist_assistant.ui")
 
 # Login hero: bundled logo (replaces "Welcome" heading when present).
 _AUTH_LOGO_PATH = Path(__file__).resolve().parent / "static" / "herbalist_logo.png"
+# Login background: soft botanical scene shown only on guest Login page.
+_AUTH_BG_PATH = Path(__file__).resolve().parent / "static" / "login_background.png"
 
 
 @st.cache_data(show_spinner=False)
@@ -58,6 +62,218 @@ def _auth_hero_logo_data_uri() -> str:
     return "data:image/png;base64," + base64.b64encode(
         _AUTH_LOGO_PATH.read_bytes()
     ).decode("ascii")
+
+
+@st.cache_data(show_spinner=False)
+def _auth_background_data_uri() -> str:
+    if not _AUTH_BG_PATH.is_file():
+        return ""
+    return "data:image/png;base64," + base64.b64encode(
+        _AUTH_BG_PATH.read_bytes()
+    ).decode("ascii")
+
+
+# ----- "Remember me" cookie support --------------------------------------
+# We persist a HMAC-signed (username, expiry) tuple in a browser cookie.
+# Verification happens server-side using HA_REMEMBER_SECRET (or a derived
+# fallback) so a tampered cookie cannot impersonate another user.
+_REMEMBER_COOKIE_NAME = "ha_remember"
+_REMEMBER_TTL_DAYS = 30
+
+
+def _remember_secret() -> bytes:
+    """Stable per-deployment secret used to sign remember tokens.
+
+    Production deployments should set ``HA_REMEMBER_SECRET``. For local dev we
+    fall back to a hash of the admin password material so the secret stays
+    consistent across reloads of the same process and machine.
+    """
+    env_secret = os.environ.get("HA_REMEMBER_SECRET", "").strip()
+    if env_secret:
+        return env_secret.encode("utf-8")
+    seed = (
+        ADMIN_USERNAME
+        + "|"
+        + (_ADMIN_PASSWORD_HASH_ENV or _ADMIN_PASSWORD_ENV or _ADMIN_DEFAULT_PASSWORD)
+    )
+    return hashlib.sha256(seed.encode("utf-8")).digest()
+
+
+def _make_remember_token(username: str, ttl_days: int = _REMEMBER_TTL_DAYS) -> str:
+    expires = int(time.time()) + ttl_days * 86400
+    payload = f"{username}|{expires}"
+    sig = hmac.new(_remember_secret(), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    return f"{payload}|{sig}"
+
+
+def _verify_remember_token(token: str) -> Optional[str]:
+    if not token or token.count("|") != 2:
+        return None
+    try:
+        username, expires_str, sig = token.split("|")
+    except ValueError:
+        return None
+    payload = f"{username}|{expires_str}"
+    expected = hmac.new(_remember_secret(), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(sig, expected):
+        return None
+    try:
+        if int(expires_str) < int(time.time()):
+            return None
+    except ValueError:
+        return None
+    if not username:
+        return None
+    return username
+
+
+# ----- Stored credentials (auto-fill password by username) ----------------
+# Dosya: ``data/.remembered_logins.json``. İçinde her kullanıcı adı için XOR-
+# obfuscate edilmiş şifre saklanır. Bu PBKDF2 hash'in YERİNE değil, login
+# formundaki "isim yazınca şifre kendiliğinden gelsin" UX akışı için.
+_REMEMBERED_LOGINS_FILENAME = ".remembered_logins.json"
+
+
+def _remembered_logins_path() -> Path:
+    p = Path(config.DATA_DIR) / _REMEMBERED_LOGINS_FILENAME
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def _xor_keystream(secret: bytes, nonce: bytes, length: int) -> bytes:
+    out = bytearray()
+    counter = 0
+    while len(out) < length:
+        out.extend(
+            hmac.new(
+                secret,
+                nonce + counter.to_bytes(4, "big"),
+                hashlib.sha256,
+            ).digest()
+        )
+        counter += 1
+    return bytes(out[:length])
+
+
+def _obscure_password(plain: str) -> str:
+    """Hafif obfuscation. Casual disk inspection'a karşı koruma; gerçek
+    güvenlik PBKDF2 hash tarafında zaten var."""
+    if not plain:
+        return ""
+    nonce = secrets.token_bytes(16)
+    plain_b = plain.encode("utf-8")
+    keystream = _xor_keystream(_remember_secret(), nonce, len(plain_b))
+    cipher = bytes(p ^ k for p, k in zip(plain_b, keystream))
+    return base64.urlsafe_b64encode(nonce + cipher).decode("ascii")
+
+
+def _unobscure_password(token: str) -> Optional[str]:
+    if not token:
+        return None
+    try:
+        raw = base64.urlsafe_b64decode(token.encode("ascii"))
+    except Exception:
+        return None
+    if len(raw) < 16:
+        return None
+    nonce, cipher = raw[:16], raw[16:]
+    keystream = _xor_keystream(_remember_secret(), nonce, len(cipher))
+    try:
+        return bytes(c ^ k for c, k in zip(cipher, keystream)).decode("utf-8")
+    except Exception:
+        return None
+
+
+def _load_remembered_logins() -> dict:
+    p = _remembered_logins_path()
+    if not p.exists():
+        return {}
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _save_remembered_logins(data: dict) -> None:
+    p = _remembered_logins_path()
+    try:
+        p.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception:
+        _logger.debug("Saving remembered logins failed", exc_info=True)
+
+
+def _store_remembered_password(username: str, password: str) -> None:
+    """Kayıt veya şifre değişimi sonrası username -> şifre eşlemesini saklar."""
+    uname = (username or "").strip().lower()
+    if not uname or not password:
+        return
+    data = _load_remembered_logins()
+    data[uname] = _obscure_password(password)
+    _save_remembered_logins(data)
+
+
+def _lookup_remembered_password(username: str) -> Optional[str]:
+    uname = (username or "").strip().lower()
+    if not uname:
+        return None
+    data = _load_remembered_logins()
+    token = data.get(uname)
+    if not token:
+        return None
+    return _unobscure_password(str(token))
+
+
+def _forget_remembered_password(username: str) -> None:
+    uname = (username or "").strip().lower()
+    if not uname:
+        return
+    data = _load_remembered_logins()
+    if data.pop(uname, None) is not None:
+        _save_remembered_logins(data)
+
+
+try:
+    import extra_streamlit_components as _stx  # type: ignore
+
+    _COOKIES_AVAILABLE = True
+except Exception:  # pragma: no cover - optional dependency
+    _stx = None
+    _COOKIES_AVAILABLE = False
+    _logger.warning(
+        "extra-streamlit-components not installed; 'Remember me' on login will be disabled. "
+        "Run: pip install extra-streamlit-components"
+    )
+
+
+_COOKIE_MGR_SESSION_KEY = "_ha_cookie_mgr"
+
+
+def _initialize_cookie_manager() -> None:
+    """Instantiate the CookieManager once per Streamlit script run.
+
+    ``CookieManager(key="ha_cookies")`` registers a Streamlit component; calling
+    it more than once in the same script run raises ``StreamlitDuplicateElementKey``.
+    We call this helper exactly once at the top of :func:`run` and then read the
+    cached instance via :func:`_get_cookie_manager` from anywhere else.
+    """
+    if not _COOKIES_AVAILABLE:
+        st.session_state[_COOKIE_MGR_SESSION_KEY] = None
+        return
+    try:
+        st.session_state[_COOKIE_MGR_SESSION_KEY] = _stx.CookieManager(
+            key="ha_cookies"
+        )
+    except Exception:
+        _logger.debug("CookieManager init failed", exc_info=True)
+        st.session_state[_COOKIE_MGR_SESSION_KEY] = None
+
+
+def _get_cookie_manager():
+    """Return the CookieManager initialized for this run (or None)."""
+    return st.session_state.get(_COOKIE_MGR_SESSION_KEY)
 
 # Admin credentials are sourced from environment variables so they are NOT
 # committed in source. Supported variables (first match wins):
@@ -319,6 +535,59 @@ def _extract_sources_from_docs(docs: List[Any]) -> List[Dict[str, Any]]:
 
 def _inject_guest_login_fullbleed_styles() -> None:
     """Guest Login only: remove sidebar column and expand main to full width (Streamlit 1.38+)."""
+    bg_uri = _auth_background_data_uri()
+    if bg_uri:
+        st.markdown(
+            f"""
+            <style>
+            /* Login kutusunun arkaplanı: botanik desen + üzerinde hafif beyaz overlay
+               (form okunabilirliği için) — sayfa arkaplanı sade gri/beyaz kalır. */
+            .st-key-ha_auth_card {{
+                background-color: #ffffff !important;
+                background-image:
+                    linear-gradient(rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.82)),
+                    url("{bg_uri}") !important;
+                background-size: cover, cover !important;
+                background-position: center, center !important;
+                background-repeat: no-repeat, no-repeat !important;
+                border: 1px solid rgba(0, 0, 0, 0.06) !important;
+                border-radius: 18px !important;
+                box-shadow: 0 12px 40px rgba(40, 55, 45, 0.10) !important;
+            }}
+            /* Kart içindeki iç bloklar şeffaf ki desen görünsün */
+            .st-key-ha_auth_card [data-testid="stHorizontalBlock"],
+            .st-key-ha_auth_card [data-testid="column"] > [data-testid="stVerticalBlock"],
+            .st-key-ha_auth_card .ha-lux-welcome,
+            .st-key-ha_auth_card .ha-lux-welcome__inner,
+            .st-key-ha_auth_form_card,
+            .st-key-ha_auth_form_card [data-testid="stVerticalBlockBorderWrapper"],
+            .st-key-ha_auth_form_card [data-testid="stVerticalBlock"] {{
+                background: transparent !important;
+            }}
+            /* Karta bindirilen ince halka deseni iptal — sade sadece botanik görünsün. */
+            .st-key-ha_auth_card [data-testid="stHorizontalBlock"]::before,
+            .st-key-ha_auth_card [data-testid="stHorizontalBlock"]::after {{
+                content: none !important;
+                display: none !important;
+                background: none !important;
+                background-image: none !important;
+            }}
+            /* Sol sütundaki dekoratif sarmaşık/yaprak süslemeleri de kapat */
+            .st-key-ha_auth_card .ha-lux-welcome__vine,
+            .st-key-ha_auth_card .ha-lux-welcome__ghost-leaf,
+            .st-key-ha_auth_card .ha-lux-welcome__rule,
+            .st-key-ha_auth_card .ha-lux-botanical,
+            .st-key-ha_auth_card .ha-lux-botanical__accent,
+            .st-key-ha_auth_card .ha-lux-botanical__photo,
+            .st-key-ha_auth_card .ha-lux-pot {{
+                display: none !important;
+                background: none !important;
+                background-image: none !important;
+            }}
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
     st.markdown(
         """
         <style>
@@ -442,6 +711,34 @@ def _inject_guest_login_fullbleed_styles() -> None:
         }
         .st-key-ha_auth_shell [data-testid="element-container"]:has(button[data-testid="baseButton-tertiary"]) {
             margin-bottom: 0 !important;
+        }
+        /* "Misafir olarak devam et" butonu: login kartının üstünde sağa
+           hizalı, belirgin pill stilinde — kullanıcı login olmadan misafir
+           Chat'e dönebilsin diye her zaman görünür kalır. SADECE bu key
+           hedefleniyor; Forgot Password tertiary butonu etkilenmiyor. */
+        .st-key-ha_auth_back_chat {
+            display: flex !important;
+            justify-content: flex-end !important;
+            margin-bottom: 0.5rem !important;
+            margin-top: 0.1rem !important;
+        }
+        .st-key-ha_auth_back_chat button {
+            background: rgba(255, 255, 255, 0.92) !important;
+            border: 1px solid rgba(0, 0, 0, 0.10) !important;
+            border-radius: 999px !important;
+            padding: 0.4rem 0.95rem !important;
+            min-height: 2.1rem !important;
+            font-size: 0.88rem !important;
+            font-weight: 500 !important;
+            color: var(--ha-text, #1f2937) !important;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06) !important;
+            text-decoration: none !important;
+        }
+        .st-key-ha_auth_back_chat button:hover {
+            background: #ffffff !important;
+            border-color: rgba(0, 0, 0, 0.22) !important;
+            color: var(--ha-text, #1f2937) !important;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important;
         }
         .st-key-ha_auth_shell .st-key-ha_auth_card,
         .st-key-ha_auth_card [data-testid="stHorizontalBlock"] {
@@ -660,26 +957,26 @@ def _inject_global_styles() -> None:
         <style>
         @import url("https://fonts.googleapis.com/css2?family=Lora:wght@600;700&family=Inter:wght@400;500;600&display=swap");
         :root {
-            --ha-bg: var(--st-background-color, #F7FAF7);
-            --ha-bg-2: var(--st-secondary-background-color, #eef3ee);
-            --ha-sidebar-bg: #EEF4EE;
-            --ha-text: var(--st-text-color, rgba(58, 56, 52, 0.92));
-            --ha-border: var(--st-border-color, rgba(88, 108, 96, 0.14));
+            /* Soft, minimalist (ChatGPT-vari) palette: nötr beyaz/gri tonlar */
+            --ha-bg: #ffffff;
+            --ha-bg-2: #f7f7f8;
+            --ha-sidebar-bg: #f9f9f9;
+            --ha-text: #1f1f1f;
+            --ha-text-soft: #6b7280;
+            --ha-border: rgba(0, 0, 0, 0.08);
             --ha-surface: #ffffff;
-            --ha-chat-ink: #3a433d;
-            --ha-accent-soft: #6d8b7c;
-            /* Shell stops (flat main + sidebar use --ha-bg / --ha-sidebar-bg) */
-            --ha-shell-1: #F7FAF7;
-            --ha-shell-2: #F7FAF7;
-            --ha-shell-3: #F7FAF7;
-            --ha-shell-4: #F7FAF7;
-            --ha-card-edge: rgba(68, 92, 76, 0.13);
-            --ha-card-shadow:
-                0 1px 4px rgba(40, 58, 48, 0.045),
-                0 0 0 1px rgba(72, 92, 78, 0.08);
+            --ha-chat-ink: #1a1a1a;
+            /* Çok hafif sıcak vurgu (herbal kimliğe minik bir gönderme) */
+            --ha-accent-soft: #5b6e63;
+            --ha-shell-1: #ffffff;
+            --ha-shell-2: #ffffff;
+            --ha-shell-3: #ffffff;
+            --ha-shell-4: #ffffff;
+            --ha-card-edge: rgba(0, 0, 0, 0.06);
+            --ha-card-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
             --ha-btn-max-w: min(100%, 15rem);
-            /* Inline SVG fractal noise (tile); opacity controlled in CSS */
-            --ha-noise-tile: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.72' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+            /* Noise dokusu sade görünüm için kapatıldı (boş url, opaklık 0) */
+            --ha-noise-tile: none;
         }
         /* App-wide: compact buttons; width follows label (not full column) */
         button[data-testid^="baseButton"] {
@@ -697,23 +994,23 @@ def _inject_global_styles() -> None:
             width: fit-content !important;
             max-width: 100% !important;
         }
-        /* Logged-in UI: white button fills (auth shell overrides via .st-key-ha_auth_shell) */
+        /* Logged-in UI: nötr beyaz buton dolguları (ChatGPT-vari sade) */
         button[data-testid^="baseButton"] {
             background-color: #ffffff !important;
             background-image: none !important;
-            border: 1px solid rgba(72, 92, 78, 0.2) !important;
-            color: #3a433d !important;
-            -webkit-text-fill-color: #3a433d !important;
-            box-shadow: 0 1px 2px rgba(40, 55, 45, 0.05) !important;
+            border: 1px solid var(--ha-border) !important;
+            color: var(--ha-text) !important;
+            -webkit-text-fill-color: var(--ha-text) !important;
+            box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04) !important;
         }
         button[data-testid^="baseButton"] p,
         button[data-testid^="baseButton"] span {
-            color: #3a433d !important;
-            -webkit-text-fill-color: #3a433d !important;
+            color: var(--ha-text) !important;
+            -webkit-text-fill-color: var(--ha-text) !important;
         }
         button[data-testid^="baseButton"]:hover {
-            background: #f9fbf9 !important;
-            border-color: rgba(72, 92, 78, 0.28) !important;
+            background: #f5f5f5 !important;
+            border-color: rgba(0, 0, 0, 0.12) !important;
         }
         div[role="radiogroup"] label {
             padding-top: 0.28rem !important;
@@ -739,9 +1036,8 @@ def _inject_global_styles() -> None:
             z-index: 1;
         }
         [data-testid="stAppViewContainer"] {
-            background: #F7FAF7 !important;
+            background: var(--ha-bg) !important;
         }
-        /* Alt boşluk / viewport: beyaz kağıt değil, shell rengi (Streamlit stApp/body) */
         html,
         body,
         #root {
@@ -758,23 +1054,15 @@ def _inject_global_styles() -> None:
         [data-testid="stFooter"] {
             background: var(--ha-bg) !important;
         }
-        /* Very subtle film grain over main content */
         section.main {
             position: relative;
             z-index: 0;
             background: transparent !important;
         }
+        /* Sade görünüm: arka plan dokusu (film noise) tamamen kapatıldı */
         [data-testid="stAppViewContainer"] section.main::before {
-            content: "";
-            position: absolute;
-            inset: 0;
-            z-index: 0;
-            pointer-events: none;
-            opacity: 0.034;
-            background-image: var(--ha-noise-tile);
-            background-size: 96px 96px;
-            background-repeat: repeat;
-            mix-blend-mode: soft-light;
+            content: none !important;
+            display: none !important;
         }
         .main .block-container:has(.st-key-ha_auth_shell) {
             max-width: 1120px;
@@ -1403,6 +1691,39 @@ def _inject_global_styles() -> None:
             margin: 0 !important;
             line-height: 1.3 !important;
         }
+        /* Forgot password butonu: form'un DIŞINDA, Login butonunun hemen
+           altında ortalı tertiary link olarak. Form içinde tek submit
+           (Login) bulunduğundan Enter doğrudan Login'i tetikler. */
+        .st-key-ha_lux_forgot_row {
+            margin-top: 0.35rem !important;
+            display: flex !important;
+            justify-content: center !important;
+        }
+        .st-key-ha_lux_forgot_row [data-testid="stElementContainer"] {
+            width: auto !important;
+            margin: 0 !important;
+        }
+        .st-key-ha_lux_forgot_row [data-testid="stButton"] {
+            display: inline-flex !important;
+            justify-content: center !important;
+        }
+        .st-key-ha_lux_forgot_row button {
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            padding: 0.25rem 0.5rem !important;
+            min-height: 1.8rem !important;
+            font-size: 0.88rem !important;
+            color: var(--ha-text-soft, #6b7280) !important;
+            text-decoration: underline;
+            text-underline-offset: 3px;
+            text-decoration-color: rgba(107, 114, 128, 0.35);
+        }
+        .st-key-ha_lux_forgot_row button:hover {
+            background: transparent !important;
+            color: var(--ha-text, #1f1f1f) !important;
+            text-decoration-color: currentColor;
+        }
         /* Primary submit — smaller pill, centered; does not touch card edges (column padding) */
         .st-key-ha_auth_shell .st-key-ha_auth_primary_submit {
             display: flex !important;
@@ -1529,20 +1850,13 @@ def _inject_global_styles() -> None:
         [data-testid="stSidebar"] {
             position: relative;
             z-index: 0;
-            border-right: 1px solid rgba(72, 92, 78, 0.11) !important;
-            background: #EEF4EE !important;
+            border-right: 1px solid var(--ha-border) !important;
+            background: var(--ha-sidebar-bg) !important;
         }
+        /* Sidebar üzerindeki noise dokusu sade görünüm için kapatıldı */
         [data-testid="stAppViewContainer"] [data-testid="stSidebar"]::before {
-            content: "";
-            position: absolute;
-            inset: 0;
-            z-index: 0;
-            pointer-events: none;
-            opacity: 0.032;
-            background-image: var(--ha-noise-tile);
-            background-size: 96px 96px;
-            background-repeat: repeat;
-            mix-blend-mode: soft-light;
+            content: none !important;
+            display: none !important;
         }
         [data-testid="stSidebar"] > * {
             position: relative;
@@ -1553,19 +1867,81 @@ def _inject_global_styles() -> None:
             padding-left: 0.85rem !important;
             padding-right: 0.85rem !important;
         }
-        [data-testid="stSidebar"] .block-container > [data-testid="stVerticalBlock"]:has(
-            [class*="st-key-ha_sidebar_login_row"]
-        ) {
-            min-height: calc(100dvh - 3.5rem) !important;
-            display: flex !important;
-            flex-direction: column !important;
-            align-items: stretch !important;
+        /* Sidebar: position: relative + tam viewport yüksekliği. Bu sayede
+           içindeki absolute konumlu login bloğu (bottom: 0) gerçek viewport
+           dibine yapışır, içerik kısa olsa bile yukarıya kaymaz.
+           stSidebarUserContent ve block-container ek positioning context
+           oluşturmaması için sıfırlanır. Block-container'a ise login
+           bloğunun altta kalacağı kadar bottom padding veriyoruz. */
+        [data-testid="stSidebar"] {
+            position: relative !important;
+            min-height: 100vh !important;
+            height: 100vh !important;
         }
-        [class*="st-key-ha_sidebar_login_row"] {
-            margin-top: auto !important;
+        [data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {
+            position: static !important;
+            min-height: 100% !important;
+            height: auto !important;
+        }
+        [data-testid="stSidebar"] .block-container {
+            min-height: 100vh !important;
+        }
+        [data-testid="stSidebar"] .block-container:has(.st-key-ha_sidebar_login_row) {
+            padding-bottom: 12rem !important;
+        }
+        /* Login satırı (başlık + açıklama + buton) sidebar'ın TAM dipine
+           absolute olarak yapıştırılır. left/right 0 + bottom 0 → kenarlarla
+           ve alt kenarla flush. İç padding ile içeriği konumluyoruz. */
+        [data-testid="stSidebar"] [data-testid="stElementContainer"]:has(> .st-key-ha_sidebar_login_row),
+        [data-testid="stSidebar"] [data-testid="stElementContainer"]:has(.st-key-ha_sidebar_login_row) {
+            position: absolute !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            width: auto !important;
+            margin: 0 !important;
+            padding: 0.85rem 0.85rem 0.85rem 0.85rem !important;
+            border-top: 1px solid var(--ha-border) !important;
+            background: var(--ha-sidebar-bg) !important;
+            z-index: 5 !important;
+        }
+        .st-key-ha_sidebar_login_row {
             width: 100% !important;
-            padding-top: 0.4rem !important;
-            flex: 0 0 auto !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            border: none !important;
+        }
+        /* Login kartı: başlık + açıklama (sade, kutusuz) */
+        .ha-sidebar-login-card {
+            margin: 0 0 0.55rem 0 !important;
+            padding: 0 !important;
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+        }
+        .ha-sidebar-login-title {
+            margin: 0 0 0.22rem 0 !important;
+            padding: 0 !important;
+            font-family: "Inter", system-ui, -apple-system, sans-serif !important;
+            font-size: 0.78rem !important;
+            font-weight: 600 !important;
+            line-height: 1.3 !important;
+            color: var(--ha-text) !important;
+            -webkit-text-fill-color: var(--ha-text) !important;
+        }
+        /* Açıklama metni: küçük, açık gri, sade (kutusuz) */
+        .ha-sidebar-login-hint {
+            margin: 0 !important;
+            padding: 0 !important;
+            font-family: "Inter", system-ui, -apple-system, sans-serif !important;
+            font-size: 0.72rem !important;
+            font-weight: 400 !important;
+            line-height: 1.4 !important;
+            color: var(--ha-text-soft) !important;
+            -webkit-text-fill-color: var(--ha-text-soft) !important;
+            background: transparent !important;
+            border: none !important;
+            border-radius: 0 !important;
         }
         /* Premium header: nav label + user card */
         [data-testid="stSidebar"] [data-testid="stMarkdownContainer"]:has(.ha-sidebar-header) {
@@ -1589,8 +1965,8 @@ def _inject_global_styles() -> None:
             font-weight: 650 !important;
             letter-spacing: 0.2em !important;
             text-transform: uppercase !important;
-            color: #5a6b52 !important;
-            -webkit-text-fill-color: #5a6b52 !important;
+            color: var(--ha-text-soft) !important;
+            -webkit-text-fill-color: var(--ha-text-soft) !important;
         }
         .ha-sidebar-header__eyebrow--tr {
             text-transform: none !important;
@@ -1603,17 +1979,17 @@ def _inject_global_styles() -> None:
             width: 1.1rem;
             height: 2px;
             border-radius: 2px;
-            background: linear-gradient(90deg, #708260, rgba(112, 130, 96, 0.15));
+            background: linear-gradient(90deg, rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.05));
         }
         .ha-sidebar-header__user-card {
             display: flex;
             align-items: center;
             gap: 0.55rem;
             padding: 0.5rem 0.65rem;
-            background: var(--ha-surface);
-            border: 1px solid var(--ha-card-edge);
+            background: #ffffff;
+            border: 1px solid var(--ha-border);
             border-radius: 12px;
-            box-shadow: var(--ha-card-shadow);
+            box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
         }
         .ha-sidebar-header__avatar {
             width: 2.1rem;
@@ -1629,7 +2005,7 @@ def _inject_global_styles() -> None:
             line-height: 1 !important;
             color: #ffffff !important;
             -webkit-text-fill-color: #ffffff !important;
-            background: linear-gradient(145deg, #8a9b8e 0%, #5a6b5c 92%);
+            background: linear-gradient(145deg, #4a4a4a 0%, #1f1f1f 92%);
             box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
         }
         .ha-sidebar-header__user-meta {
@@ -1645,8 +2021,8 @@ def _inject_global_styles() -> None:
             font-weight: 600 !important;
             letter-spacing: 0.06em !important;
             text-transform: uppercase !important;
-            color: #6e7a66 !important;
-            -webkit-text-fill-color: #6e7a66 !important;
+            color: var(--ha-text-soft) !important;
+            -webkit-text-fill-color: var(--ha-text-soft) !important;
         }
         .ha-sidebar-header__name {
             font-family: "Inter", system-ui, sans-serif !important;
@@ -1654,8 +2030,8 @@ def _inject_global_styles() -> None:
             font-weight: 650 !important;
             letter-spacing: -0.02em !important;
             line-height: 1.25 !important;
-            color: #2d3528 !important;
-            -webkit-text-fill-color: #2d3528 !important;
+            color: var(--ha-text) !important;
+            -webkit-text-fill-color: var(--ha-text) !important;
             word-break: break-word;
         }
         [data-testid="stSidebar"] div[data-testid="stExpander"] {
@@ -1673,140 +2049,183 @@ def _inject_global_styles() -> None:
         [data-testid="stSidebar"] hr {
             margin: 1.15rem 0 0.75rem 0 !important;
             border: none !important;
-            border-top: 1px solid rgba(75, 89, 64, 0.12) !important;
+            border-top: 1px solid var(--ha-border) !important;
         }
-        [data-testid="stSidebar"] button[kind="primary"] {
-            background: #ffffff !important;
+        /* Sidebar butonları: ChatGPT tarzı minimal — kutu/border yok,
+           sola hizalı icon + label, sadece hover'da yumuşak yuvarlatılmış
+           pill arkaplan. Bu kural Login CTA butonu HARİÇ tüm sidebar
+           butonlarına uygulanır (Login kendi style'ını aşağıda override eder). */
+        [data-testid="stSidebar"] button[kind="primary"],
+        [data-testid="stSidebar"] button[kind="secondary"],
+        [data-testid="stSidebar"] [data-testid="stButton"] button {
+            background: transparent !important;
             background-image: none !important;
-            border: 1px solid rgba(72, 92, 78, 0.2) !important;
-            color: #3a433d !important;
-            -webkit-text-fill-color: #3a433d !important;
-            border-radius: 10px !important;
-            min-height: 2.2rem !important;
-            font-size: 0.8rem !important;
-            font-weight: 550 !important;
-            padding-left: 0.75rem !important;
-            padding-right: 0.75rem !important;
-            box-shadow: 0 1px 2px rgba(40, 55, 45, 0.05) !important;
+            border: 1px solid transparent !important;
+            color: var(--ha-text) !important;
+            -webkit-text-fill-color: var(--ha-text) !important;
+            border-radius: 8px !important;
+            min-height: 2.1rem !important;
+            font-size: 0.92rem !important;
+            font-weight: 500 !important;
+            padding: 0.4rem 0.6rem !important;
+            box-shadow: none !important;
+            text-align: left !important;
+            justify-content: flex-start !important;
         }
         [data-testid="stSidebar"] button[kind="primary"] p,
-        [data-testid="stSidebar"] button[kind="primary"] span {
-            color: #3a433d !important;
-            -webkit-text-fill-color: #3a433d !important;
+        [data-testid="stSidebar"] button[kind="primary"] span,
+        [data-testid="stSidebar"] button[kind="secondary"] p,
+        [data-testid="stSidebar"] button[kind="secondary"] span {
+            color: var(--ha-text) !important;
+            -webkit-text-fill-color: var(--ha-text) !important;
+            font-weight: 500 !important;
         }
-        [data-testid="stSidebar"] button[kind="primary"]:hover {
-            background: #f9fbf9 !important;
+        /* Material icon görünümü */
+        [data-testid="stSidebar"] [data-testid="stButton"] button [data-testid="stIconMaterial"],
+        [data-testid="stSidebar"] [data-testid="stButton"] button .material-symbols-rounded {
+            color: var(--ha-text-soft) !important;
+            margin-right: 0.45rem !important;
+            font-size: 1.05rem !important;
+        }
+        [data-testid="stSidebar"] button[kind="primary"]:hover,
+        [data-testid="stSidebar"] button[kind="secondary"]:hover,
+        [data-testid="stSidebar"] [data-testid="stButton"] button:hover {
+            background: rgba(0, 0, 0, 0.05) !important;
             filter: none !important;
+            border-color: transparent !important;
+            box-shadow: none !important;
         }
-        [data-testid="stSidebar"] button[kind="secondary"] {
-            min-height: 2.05rem !important;
-            font-size: 0.78rem !important;
-            border-radius: 9px !important;
-            border: 1px solid rgba(72, 92, 78, 0.18) !important;
-            background: #ffffff !important;
-            color: #3a433d !important;
-            -webkit-text-fill-color: #3a433d !important;
+        [data-testid="stSidebar"] [data-testid="stButton"] button:hover [data-testid="stIconMaterial"] {
+            color: var(--ha-text) !important;
+        }
+
+        /* Sidebar dipindeki Login (CTA) butonu prominent kalsın — minimal
+           kuralı override ederek koyu pill stilini geri veriyoruz. */
+        .st-key-ha_sidebar_login_btn button {
+            background: #2c2c2c !important;
+            background-image: none !important;
+            border: 1px solid #2c2c2c !important;
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+            border-radius: 10px !important;
+            min-height: 2.4rem !important;
+            font-size: 0.92rem !important;
+            font-weight: 600 !important;
+            padding: 0.55rem 0.85rem !important;
+            text-align: center !important;
+            justify-content: center !important;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08) !important;
+        }
+        .st-key-ha_sidebar_login_btn button p,
+        .st-key-ha_sidebar_login_btn button span {
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+            font-weight: 600 !important;
+        }
+        .st-key-ha_sidebar_login_btn button:hover {
+            background: #1f1f1f !important;
+            border-color: #1f1f1f !important;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12) !important;
         }
         [data-testid="stSidebar"] .ha-sidebar-title {
-            font-size: 0.84rem;
+            font-size: 0.78rem;
             font-weight: 600;
-            color: #454a44;
+            color: var(--ha-text-soft);
             margin: 0.65rem 0 0.28rem 0;
-            letter-spacing: -0.01em;
-            opacity: 0.95;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            opacity: 0.85;
         }
         [data-testid="stSidebar"] .ha-sidebar-subtitle {
             font-size: 0.74rem;
-            color: #6a6f68;
-            opacity: 0.9;
+            color: var(--ha-text-soft);
+            opacity: 0.85;
             margin-bottom: 0.32rem;
             font-weight: 500;
         }
         [data-testid="stSidebar"] .ha-sidebar-selected {
-            background: rgba(255, 255, 255, 0.55);
-            border: 1px solid var(--ha-card-edge);
+            background: rgba(0, 0, 0, 0.04);
+            border: 1px solid transparent;
             border-radius: 9px;
             padding: 0.38rem 0.52rem;
             margin-bottom: 0.32rem;
-            font-size: 0.82rem;
+            font-size: 0.86rem;
             font-weight: 520;
-            color: #353a34;
+            color: var(--ha-text);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            box-shadow: 0 1px 2px rgba(40, 58, 48, 0.04);
+            box-shadow: none;
         }
         [data-testid="stSidebar"] div[role="radiogroup"] label {
             border-radius: 9px;
-            padding: 0.28rem 0.5rem;
+            padding: 0.34rem 0.55rem;
             margin-bottom: 0.08rem;
             transition: background-color 0.15s ease;
+            font-size: 0.9rem !important;
         }
         [data-testid="stSidebar"] div[role="radiogroup"] label:hover {
-            background: rgba(109, 139, 124, 0.07);
+            background: rgba(0, 0, 0, 0.04);
         }
         [data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) {
-            background: rgba(109, 139, 124, 0.12);
-            border: 1px solid rgba(109, 139, 124, 0.2) !important;
+            background: rgba(0, 0, 0, 0.06);
+            border: 1px solid transparent !important;
+            font-weight: 600 !important;
         }
         [data-testid="stSidebar"] div[role="radiogroup"] label > div:first-child {
             display: none;
         }
-        /* Sohbet: belge kaysin; stMain taşmada kesilmesin. Composer altta sticky. */
+        /* ====== ChatGPT tarzı sabit chat düzeni ======
+           - body/html: 100vh, overflow hidden (sayfa scroll kapalı)
+           - stApp / stAppViewContainer: Streamlit'in kendi flex/height hesabına
+             güveniriz; sadece overflow'u kapatırız (yoksa bizim verdiğimiz 100vh
+             header'ın altında taşmaya yol açıyordu).
+           - Tek scrollable alan: stMainBlockContainer (mesajlar)
+           - Composer: position: fixed; viewport'a göre konumlanır, sidebar açıkken
+             ana içerik alanına hizalı gözükür. */
         html:has(.st-key-ha_chat_composer_row),
         body:has(.st-key-ha_chat_composer_row) {
+            height: 100vh !important;
+            max-height: 100vh !important;
+            overflow: hidden !important;
+        }
+        [data-testid="stApp"]:has(.st-key-ha_chat_composer_row),
+        [data-testid="stAppViewContainer"]:has(.st-key-ha_chat_composer_row) {
+            overflow: hidden !important;
+        }
+        /* stMain: taşma kesilir, içerik scroll alanı içinde kalsın. */
+        [data-testid="stAppViewContainer"]:has(.st-key-ha_chat_composer_row) [data-testid="stMain"] {
+            overflow: hidden !important;
+            position: relative !important;
+        }
+        /* stMainBlockContainer: TEK scroll alanı (mesajlar). Composer'ın altta
+           kapladığı alan kadar bottom padding ekleriz, son mesaj gizlenmesin. */
+        [data-testid="stAppViewContainer"]:has(.st-key-ha_chat_composer_row) [data-testid="stMainBlockContainer"] {
+            height: 100% !important;
+            max-height: 100% !important;
+            min-height: 0 !important;
             overflow-y: auto !important;
             overflow-x: hidden !important;
-            height: auto !important;
-            max-height: none !important;
+            padding-bottom: calc(7.5rem + env(safe-area-inset-bottom, 0px)) !important;
+            scroll-behavior: smooth !important;
         }
-        [data-testid="stApp"]:has(.st-key-ha_chat_composer_row) {
-            overflow: visible !important;
-            height: auto !important;
-            max-height: none !important;
-        }
-        [data-testid="stAppViewContainer"]:has(.st-key-ha_chat_composer_row) {
-            overflow: visible !important;
-            min-height: 0 !important;
-            max-height: none !important;
-            height: auto !important;
-        }
-        [data-testid="stAppViewContainer"]:has(.st-key-ha_chat_composer_row) [data-testid="stMain"],
-        [data-testid="stAppViewContainer"]:has(.st-key-ha_chat_composer_row) [data-testid="stMainBlockContainer"] {
-            overflow: visible !important;
-            max-height: none !important;
-            height: auto !important;
-        }
-        [data-testid="stAppViewContainer"]:has(.st-key-ha_chat_composer_row) [data-testid="stMainBlockContainer"] {
-            padding-bottom: 0 !important;
-        }
+        /* İçerideki vertical block'ların yüksekliği serbest kalsın. */
         [data-testid="stAppViewContainer"]:has(.st-key-ha_chat_composer_row) [data-testid="stMain"] [data-testid="stVerticalBlock"] {
             overflow: visible !important;
-            max-height: none !important;
-            height: auto !important;
         }
-        section.main:has(.st-key-ha_chat_composer_row),
-        .main:has(.st-key-ha_chat_composer_row) {
-            overflow: visible !important;
-            max-height: none !important;
-        }
-        section.main:has(.st-key-ha_chat_composer_row) .block-container,
-        .main:has(.st-key-ha_chat_composer_row) .block-container {
-            overflow: visible !important;
-            max-height: none !important;
-            padding-bottom: 0 !important;
-        }
-        .main:has(.st-key-ha_chat_composer_row) [data-testid="stChatMessage"] {
+        section.main:has(.st-key-ha_chat_composer_row) [data-testid="stChatMessage"],
+        [data-testid="stMain"]:has(.st-key-ha_chat_composer_row) [data-testid="stChatMessage"] {
             margin-bottom: 0.3rem !important;
         }
-        .main:has(.st-key-ha_chat_composer_row) [class*="st-key-ha_assistant_actions_row"] {
+        section.main:has(.st-key-ha_chat_composer_row) [class*="st-key-ha_assistant_actions_row"],
+        [data-testid="stMain"]:has(.st-key-ha_chat_composer_row) [class*="st-key-ha_assistant_actions_row"] {
             margin-bottom: 0.05rem !important;
         }
-        /* Agent + welcome st.empty() slots: strip default block height above composer */
-        section.main:has(.st-key-ha_chat_composer_row) [data-testid="stVerticalBlock"] > [data-testid="stElementContainer"]:has(
+        /* Agent thinking + welcome empty slot'ları composer'ı yukarı itmesin */
+        [data-testid="stMain"]:has(.st-key-ha_chat_composer_row) [data-testid="stVerticalBlock"] > [data-testid="stElementContainer"]:has(
             + [data-testid="stElementContainer"] .st-key-ha_chat_composer_row
         ),
-        section.main:has(.st-key-ha_chat_composer_row) [data-testid="stVerticalBlock"] > [data-testid="stElementContainer"]:has(
+        [data-testid="stMain"]:has(.st-key-ha_chat_composer_row) [data-testid="stVerticalBlock"] > [data-testid="stElementContainer"]:has(
             + [data-testid="stElementContainer"]:has(
                 + [data-testid="stElementContainer"] .st-key-ha_chat_composer_row
             )
@@ -1815,20 +2234,58 @@ def _inject_global_styles() -> None:
             padding: 0 !important;
             min-height: 0 !important;
         }
-        /* Chat composer: sticky; üstte minimal boşluk (büyük padding kaldırıldı) */
+        /* Chat composer: HER ZAMAN ekranın altında sabit (viewport bottom).
+           Sidebar açıkken ana içerik alanına hizalanması için aşağıdaki JS,
+           stMain'in soluna ve genişliğine göre --ha-main-left ve --ha-main-width
+           CSS değişkenlerini günceller. Değişkenler yoksa viewport tamamına yayılır. */
         .st-key-ha_chat_composer_row {
-            position: sticky !important;
-            bottom: 0;
-            z-index: 8 !important;
-            margin-top: 0.2rem !important;
-            margin-bottom: max(0.35rem, env(safe-area-inset-bottom, 0px)) !important;
+            position: fixed !important;
+            bottom: 0 !important;
+            top: auto !important;
+            left: var(--ha-main-left, 0) !important;
+            right: auto !important;
+            width: var(--ha-main-width, 100vw) !important;
+            max-width: none !important;
+            z-index: 999 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            border-radius: 0 !important;
+            pointer-events: none; /* boş kenarlar tıklanabilir olmasın */
+        }
+        /* Composer'ın iç sütun bloğunu ortalayıp kart görünümü ona veriyoruz.
+           Streamlit ara sarmalayıcıları (stVerticalBlockBorderWrapper,
+           stVerticalBlock, stElementContainer) varsayılan olarak şeffaf bırakılır. */
+        .st-key-ha_chat_composer_row [data-testid="stVerticalBlockBorderWrapper"],
+        .st-key-ha_chat_composer_row > div,
+        .st-key-ha_chat_composer_row [data-testid="stVerticalBlock"],
+        .st-key-ha_chat_composer_row [data-testid="stElementContainer"] {
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+        }
+        .st-key-ha_chat_composer_row [data-testid="stHorizontalBlock"] {
+            pointer-events: auto;
+            max-width: 48rem !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+            margin-bottom: max(0.6rem, env(safe-area-inset-bottom, 0px)) !important;
             padding: 0.5rem 0.65rem !important;
-            border-radius: 14px !important;
-            border: 1px solid var(--ha-card-edge) !important;
             background: #ffffff !important;
+            border: 1px solid var(--ha-card-edge) !important;
+            border-radius: 14px !important;
             box-shadow:
                 0 -4px 14px rgba(40, 55, 45, 0.06),
                 var(--ha-card-shadow) !important;
+        }
+        @media (max-width: 720px) {
+            .st-key-ha_chat_composer_row [data-testid="stHorizontalBlock"] {
+                margin-left: 0.5rem !important;
+                margin-right: 0.5rem !important;
+                margin-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px)) !important;
+            }
         }
         .st-key-ha_chat_composer_row [data-testid="stHorizontalBlock"] {
             align-items: flex-end !important;
@@ -1861,18 +2318,32 @@ def _inject_global_styles() -> None:
             display: none !important;
         }
         .st-key-ha_chat_composer_row [data-testid="stChatInput"] > div {
-            border-radius: 11px !important;
-            border-color: rgba(95, 90, 82, 0.12) !important;
+            border-radius: 14px !important;
+            border-color: var(--ha-border) !important;
             background: var(--ha-surface) !important;
+            box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04) !important;
         }
-        /* Chat bubbles: clear card separation on shell background */
+        /* Chat bubbles: ChatGPT tarzı sade — asistan baloncuğu çerçevesiz,
+           kullanıcı baloncuğu hafif gri pill. */
         section.main [data-testid="stChatMessage"] {
-            background: var(--ha-surface) !important;
-            border: 1px solid var(--ha-card-edge) !important;
+            background: transparent !important;
+            border: none !important;
             border-radius: 12px !important;
-            padding: 0.55rem 0.72rem !important;
-            margin-bottom: 0.65rem !important;
-            box-shadow: var(--ha-card-shadow) !important;
+            padding: 0.45rem 0.65rem !important;
+            margin-bottom: 0.45rem !important;
+            box-shadow: none !important;
+        }
+        /* Kullanıcı mesajı (sağ avatarlı): yumuşak gri pill */
+        section.main [data-testid="stChatMessage"]:has(
+            [data-testid="stChatMessageAvatarUser"]
+        ),
+        section.main [data-testid="stChatMessage"].st-emotion-cache-user,
+        section.main [data-testid="stChatMessage"]:has(
+            [data-testid="chatAvatarIcon-user"]
+        ) {
+            background: #f4f4f5 !important;
+            border-radius: 14px !important;
+            padding: 0.6rem 0.85rem !important;
         }
         /* Admin: modern control panel (scoped to ha_admin_panel / ha_admin_feedback) */
         .st-key-ha_admin_panel .ha-admin-hero,
@@ -2016,32 +2487,35 @@ def _inject_global_styles() -> None:
             color: var(--ha-chat-ink) !important;
             line-height: 1.55 !important;
         }
-        /* Suggested prompts: small, light secondary chips */
+        /* Suggested prompts: ChatGPT-vari sade, hafif kenarlı chip butonlar */
         .st-key-ha_suggested_prompts {
-            margin-top: 0.35rem !important;
+            margin-top: 0.5rem !important;
             margin-bottom: 0.15rem !important;
+            max-width: 48rem;
+            margin-left: auto !important;
+            margin-right: auto !important;
         }
         .st-key-ha_suggested_prompts [data-testid="stHorizontalBlock"] {
-            gap: 0.45rem !important;
+            gap: 0.55rem !important;
         }
         .st-key-ha_suggested_prompts button[data-testid^="baseButton"] {
-            min-height: 2.15rem !important;
-            font-size: 0.78rem !important;
+            min-height: 2.25rem !important;
+            font-size: 0.85rem !important;
             font-weight: 450 !important;
-            line-height: 1.35 !important;
-            border-radius: 9px !important;
-            border: 1px solid rgba(72, 92, 78, 0.18) !important;
+            line-height: 1.4 !important;
+            border-radius: 12px !important;
+            border: 1px solid var(--ha-border) !important;
             background: #ffffff !important;
-            color: #454a44 !important;
-            -webkit-text-fill-color: #454a44 !important;
-            box-shadow: 0 1px 2px rgba(40, 55, 45, 0.04) !important;
-            padding-left: 0.65rem !important;
-            padding-right: 0.65rem !important;
+            color: var(--ha-text) !important;
+            -webkit-text-fill-color: var(--ha-text) !important;
+            box-shadow: none !important;
+            padding-left: 0.85rem !important;
+            padding-right: 0.85rem !important;
         }
         .st-key-ha_suggested_prompts button[data-testid^="baseButton"]:hover {
-            background: #f9fbf9 !important;
-            border-color: rgba(72, 92, 78, 0.26) !important;
-            color: #353a34 !important;
+            background: #f7f7f8 !important;
+            border-color: rgba(0, 0, 0, 0.12) !important;
+            color: var(--ha-text) !important;
         }
         /* Assistant bubbles: compact copy + sources + merged 👍/👎 */
         [class*="st-key-ha_assistant_actions_row"] [data-testid="stHorizontalBlock"] {
@@ -2195,55 +2669,56 @@ def _inject_global_styles() -> None:
             background-color: transparent !important;
             border: none !important;
         }
-        /* Forms (logged-in): primary = same white treatment as other buttons */
+        /* Forms (logged-in): primary = nötr beyaz buton sade çerçevesi */
         [data-testid="stForm"] button[kind="primary"] {
             border-radius: 10px !important;
             min-height: 2.2rem !important;
-            font-size: 0.84rem !important;
+            font-size: 0.85rem !important;
             background: #ffffff !important;
             background-image: none !important;
-            border: 1px solid rgba(72, 92, 78, 0.22) !important;
-            color: #3a433d !important;
-            -webkit-text-fill-color: #3a433d !important;
+            border: 1px solid var(--ha-border) !important;
+            color: var(--ha-text) !important;
+            -webkit-text-fill-color: var(--ha-text) !important;
             transition: transform 0.05s ease, filter 0.15s ease;
         }
         [data-testid="stFormSubmitButton"] button[kind="primary"],
         [data-testid="stFormSubmitButton"] button[data-testid="baseButton-primary"] {
             border-radius: 10px !important;
             min-height: 2.35rem !important;
-            font-size: 0.84rem !important;
+            font-size: 0.85rem !important;
             background: #ffffff !important;
             background-image: none !important;
-            border: 1px solid rgba(72, 92, 78, 0.22) !important;
-            color: #3a433d !important;
-            -webkit-text-fill-color: #3a433d !important;
+            border: 1px solid var(--ha-border) !important;
+            color: var(--ha-text) !important;
+            -webkit-text-fill-color: var(--ha-text) !important;
         }
         [data-testid="stFormSubmitButton"] button[kind="primary"] p,
         [data-testid="stFormSubmitButton"] button[data-testid="baseButton-primary"] p,
         [data-testid="stFormSubmitButton"] button[kind="primary"] span,
         [data-testid="stFormSubmitButton"] button[data-testid="baseButton-primary"] span {
-            color: #3a433d !important;
-            -webkit-text-fill-color: #3a433d !important;
+            color: var(--ha-text) !important;
+            -webkit-text-fill-color: var(--ha-text) !important;
         }
         [data-testid="stFormSubmitButton"] button[kind="primary"]:hover,
         [data-testid="stFormSubmitButton"] button[data-testid="baseButton-primary"]:hover {
-            background: #f9fbf9 !important;
+            background: #f5f5f5 !important;
             filter: none !important;
+            border-color: rgba(0, 0, 0, 0.12) !important;
         }
         button[kind="primary"] {
             background: #ffffff !important;
             background-image: none !important;
-            border: 1px solid rgba(72, 92, 78, 0.22) !important;
-            color: #3a433d !important;
-            -webkit-text-fill-color: #3a433d !important;
+            border: 1px solid var(--ha-border) !important;
+            color: var(--ha-text) !important;
+            -webkit-text-fill-color: var(--ha-text) !important;
         }
         a {
-            color: #5a7d6e !important;
+            color: #2563eb !important;
         }
         .ha-forgot-link > div > button {
             background: transparent !important;
             border: none !important;
-            color: #5a7d6e !important;
+            color: var(--ha-text-soft) !important;
             padding: 0 !important;
             min-height: auto !important;
             font-size: 0.9rem !important;
@@ -2251,7 +2726,7 @@ def _inject_global_styles() -> None:
             box-shadow: none !important;
         }
         .ha-forgot-link > div > button:hover {
-            color: #3d5a4d !important;
+            color: var(--ha-text) !important;
             text-decoration: underline !important;
         }
         [data-testid="stForm"] button[kind="primary"]:hover {
@@ -2371,6 +2846,61 @@ def _inject_global_styles() -> None:
     )
 
 
+def _inject_chat_layout_script() -> None:
+    """Sidebar açıkken/kapalıyken composer'ın stMain ile hizalı kalması için
+    iki CSS değişkenini günceller: --ha-main-left, --ha-main-width.
+
+    Composer 'position: fixed' kullanır; CSS değişkenleri sayesinde stMain'in
+    gerçek bounding rect'ine göre konumlanır."""
+    components.html(
+        """
+        <script>
+          (function () {
+            try {
+              const doc = window.parent && window.parent.document
+                ? window.parent.document
+                : document;
+              if (!doc) return;
+              const root = doc.documentElement;
+
+              function update() {
+                try {
+                  const main = doc.querySelector('[data-testid="stMain"]');
+                  if (!main) return;
+                  const rect = main.getBoundingClientRect();
+                  root.style.setProperty('--ha-main-left', rect.left + 'px');
+                  root.style.setProperty('--ha-main-width', rect.width + 'px');
+                } catch (e) {}
+              }
+
+              update();
+              const win = window.parent || window;
+              win.addEventListener('resize', update, { passive: true });
+
+              // Sidebar / main boyut değişimlerini izle
+              try {
+                const targets = [
+                  doc.querySelector('[data-testid="stMain"]'),
+                  doc.querySelector('[data-testid="stSidebar"]'),
+                  doc.querySelector('[data-testid="stAppViewContainer"]'),
+                ].filter(Boolean);
+                if (window.ResizeObserver && targets.length) {
+                  const ro = new ResizeObserver(update);
+                  targets.forEach((t) => ro.observe(t));
+                }
+              } catch (e) {}
+
+              // Streamlit re-render sonrası DOM yenilenmesi için emniyet kemeri
+              setInterval(update, 600);
+            } catch (e) {}
+          })();
+        </script>
+        """,
+        height=0,
+        width=0,
+    )
+
+
 def _force_sidebar_collapsed_on_load() -> None:
     """
     Streamlit persists sidebar open/closed state in browser localStorage.
@@ -2465,6 +2995,30 @@ def _on_guest_top_nav() -> None:
         st.session_state["active_page"] = pick
 
 
+def _on_login_username_change() -> None:
+    """Login formu UX: kullanıcı adı yazılıp commit edildiğinde (Tab/Enter),
+    daha önce bu makinada kayıt olmuş ya da giriş yapmış kullanıcı için
+    hatırlanan şifre ``login_password`` session_state alanına yazılır. Bir
+    sonraki rerun'da password input bu değerle pre-fill olarak render edilir.
+
+    Eşleşen kayıt yoksa, önceki auto-fill artığı bırakmamak için password
+    alanı temizlenir — böylece farklı bir hesaba geçildiğinde yanlış şifre
+    formda kalmaz.
+    """
+    user = str(st.session_state.get("login_username", "")).strip()
+    if not user:
+        return
+    pwd = _lookup_remembered_password(user)
+    last_user = st.session_state.get("_ha_autofill_last_user")
+    if pwd:
+        st.session_state["login_password"] = pwd
+        st.session_state["_ha_autofill_last_user"] = user
+    elif last_user is not None and last_user != user:
+        # Önceki user için autofill yapılmıştı, bu user için yok → temizle.
+        st.session_state["login_password"] = ""
+        st.session_state["_ha_autofill_last_user"] = user
+
+
 def _hash_password(password: str, salt: str) -> str:
     return hashlib.pbkdf2_hmac(
         "sha256",
@@ -2541,6 +3095,10 @@ def _reset_user_password(username: str, new_password: str, confirm_password: str
     )
     if not updated:
         return "User not found."
+    # Eğer kullanıcı daha önce Remember me ile şifresini hatırlatmışsa,
+    # eski (artık geçersiz) entry'yi temizliyoruz. Yeni şifreyi otomatik
+    # KAYDETMİYORUZ — bu davranış login formundaki Remember me'ye bağlı.
+    _forget_remembered_password(username)
     return "Password reset successful. You can now log in."
 
 
@@ -2687,7 +3245,80 @@ def _logout() -> None:
     if username and role == "user":
         # Ensure next login starts in a fresh chat for the user.
         start_new_chat(username)
+    cookie_mgr = _get_cookie_manager()
+    cookie_deleted = False
+    if cookie_mgr is not None:
+        try:
+            cookie_mgr.delete(cookie=_REMEMBER_COOKIE_NAME, key="ha_cookie_logout_del")
+            cookie_deleted = True
+        except Exception:
+            _logger.debug("Remember-me cookie delete failed", exc_info=True)
     st.session_state.clear()
+    # Logout sonrası Misafir Chat yerine doğrudan Login ekranı açılsın.
+    st.session_state["active_page"] = "Login"
+    st.session_state["auth_mode"] = "Login"
+    # Bu session için auto-login'i kapat: cookie henüz tarayıcıdan silinmemiş
+    # olsa bile kullanıcı çıkış yapmayı seçtiği için tekrar oturum açılmasın.
+    st.session_state["ha_remember_consumed"] = True
+    # Cookie delete komutunun WebSocket üzerinden tarayıcıya iletilmesi için
+    # kısa süre bekle (Login set/delete'le aynı race condition'ı önler).
+    if cookie_deleted:
+        time.sleep(0.4)
+    st.rerun()
+
+
+def _try_auto_login_from_cookie() -> None:
+    """If a valid HMAC-signed remember cookie is present, log the user in.
+
+    Runs once per Streamlit session: after a successful auto-login we set
+    ``ha_remember_consumed`` so subsequent reruns skip the cookie roundtrip.
+    """
+    if st.session_state.get("is_logged_in"):
+        return
+    if st.session_state.get("ha_remember_consumed"):
+        return
+    cookie_mgr = _get_cookie_manager()
+    if cookie_mgr is None:
+        return
+    try:
+        token = cookie_mgr.get(cookie=_REMEMBER_COOKIE_NAME)
+    except Exception:
+        _logger.debug("Remember-me cookie read failed", exc_info=True)
+        return
+    # The cookie manager returns None on the first run before the JS round-trip
+    # completes; mark consumed only when we actually saw a token (or the cookie
+    # is conclusively absent on a later rerun).
+    if not token:
+        return
+    username = _verify_remember_token(str(token))
+    if not username:
+        try:
+            cookie_mgr.delete(cookie=_REMEMBER_COOKIE_NAME, key="ha_cookie_invalid_clear")
+        except Exception:
+            pass
+        st.session_state["ha_remember_consumed"] = True
+        return
+    profile = _get_user_profile(username)
+    if not profile:
+        try:
+            cookie_mgr.delete(cookie=_REMEMBER_COOKIE_NAME, key="ha_cookie_unknown_clear")
+        except Exception:
+            pass
+        st.session_state["ha_remember_consumed"] = True
+        return
+    st.session_state.is_logged_in = True
+    st.session_state.username = username
+    st.session_state.role = (
+        "admin" if username == ADMIN_USERNAME else "user"
+    )
+    st.session_state.user_profile = profile
+    if st.session_state.role == "user":
+        start_new_chat(username)
+        _sync_conversations_to_session(username)
+    st.session_state.active_page = (
+        "Admin Panel" if st.session_state.role == "admin" else "Chat"
+    )
+    st.session_state["ha_remember_consumed"] = True
     st.rerun()
 
 
@@ -2776,32 +3407,24 @@ def _render_auth_screen() -> None:
                 st.session_state.active_page = "Chat"
                 # Keep nav radio in sync (sidebar was skipped on Login; widget state could stay "Login").
                 st.session_state["ha_nav_guest_top"] = "Chat"
+                # Misafir mod açıkça seçildi: cookie hala tarayıcıda olsa
+                # bile bu session boyunca auto-login'i devreye sokma.
+                st.session_state["ha_remember_consumed"] = True
+                st.session_state["ha_guest_explicit"] = True
                 st.rerun()
         with st.container(key="ha_auth_card"):
             left_col, right_col = st.columns([0.9, 1.1], gap="small")
 
             w_title = _html.escape(get_string(lang, "auth_lux_welcome_title"))
-            w_app_title = _html.escape(get_string(lang, "app_title"))
-            _logo_src = _auth_hero_logo_data_uri()
-            if _logo_src:
-                _hero_block = f'<div class="ha-lux-welcome__logo"><img src="{_logo_src}" alt="{w_app_title}" loading="lazy" decoding="async" /></div>'
-            else:
-                _hero_block = f'''<h1 style="text-align: center; width: 100%; margin: 0 0 0.5rem 0;">{w_title}</h1>
-                            <div class="ha-lux-welcome__rule" aria-hidden="true"></div>'''
+            w_lead = _html.escape(get_string(lang, "auth_lux_welcome_lead"))
 
             with left_col:
                 st.markdown(
                     f"""
-                    <div class="ha-lux-welcome" style="text-align: center; width: 100%;">
-                        <div class="ha-lux-welcome__vine" aria-hidden="true"></div>
-                        <div class="ha-lux-welcome__ghost-leaf" aria-hidden="true"></div>
-                        <div class="ha-lux-welcome__inner" style="text-align: center; width: 100%;">
-                            {_hero_block}
-                        </div>
-                        <div class="ha-lux-botanical" aria-hidden="true">
-                            <div class="ha-lux-botanical__accent"></div>
-                            <div class="ha-lux-botanical__photo"></div>
-                            <div class="ha-lux-pot"></div>
+                    <div class="ha-lux-welcome ha-lux-welcome--text">
+                        <div class="ha-lux-welcome__inner">
+                            <h1 class="ha-lux-welcome__title">{w_title}</h1>
+                            <p class="ha-lux-welcome__lead">{w_lead}</p>
                         </div>
                     </div>
                     """,
@@ -2903,13 +3526,19 @@ def _render_auth_screen() -> None:
                             f'<div class="ha-lux-form-sub">{_html.escape(get_string(lang, "auth_lux_login_sub"))}</div>',
                             unsafe_allow_html=True,
                         )
-                        with st.form("login_form", clear_on_submit=False, border=False):
+                        # Username form'un DIŞINDA: on_change burada gerçek
+                        # zamanlı tetiklenir → kullanıcı adı yazılıp Tab/Enter
+                        # ile commit edilince hatırlanan şifre otomatik dolar.
+                        with st.container(key="ha_lux_username_outside"):
                             st.text_input(
                                 get_string(lang, "username"),
                                 key="login_username",
                                 label_visibility="collapsed",
                                 placeholder=get_string(lang, "auth_lux_email_ph"),
+                                on_change=_on_login_username_change,
                             )
+
+                        with st.form("login_form", clear_on_submit=False, border=False):
                             st.text_input(
                                 get_string(lang, "password"),
                                 type="password",
@@ -2918,25 +3547,29 @@ def _render_auth_screen() -> None:
                                 placeholder=get_string(lang, "auth_lux_password_ph"),
                             )
                             with st.container(key="ha_lux_remember_row"):
-                                rem_c, forgot_c = st.columns([1.35, 1], gap="small")
-                                with rem_c:
-                                    st.checkbox(
-                                        get_string(lang, "auth_remember_me"),
-                                        key="auth_remember_me",
-                                    )
-                                with forgot_c:
-                                    submit_forgot = st.form_submit_button(
-                                        get_string(lang, "forgot_pwd"),
-                                        type="tertiary",
-                                        width="content",
-                                        key="login_forgot_submit",
-                                    )
+                                st.checkbox(
+                                    get_string(lang, "auth_remember_me"),
+                                    key="auth_remember_me",
+                                )
+                            # Form içinde TEK submit button: Login. Bu sayede
+                            # password içinde Enter'a basıldığında doğrudan
+                            # Login submit edilir.
                             with st.container(key="ha_auth_primary_submit"):
                                 submit_login = st.form_submit_button(
                                     get_string(lang, "login_btn"),
                                     type="primary",
                                     use_container_width=False,
                                 )
+
+                        # Forgot password: form'un DIŞINDA, sıradan bir buton.
+                        # Form içinde ekstra submit_button olmadığı için Enter
+                        # sadece Login'i tetikler.
+                        with st.container(key="ha_lux_forgot_row"):
+                            submit_forgot = st.button(
+                                get_string(lang, "forgot_pwd"),
+                                type="tertiary",
+                                key="login_forgot_outside",
+                            )
                     else:
                         st.markdown(
                             f'<div class="ha-lux-form-title">{_html.escape(get_string(lang, "auth_lux_register_title"))}</div>',
@@ -2998,7 +3631,52 @@ def _render_auth_screen() -> None:
                                 "Admin Panel" if st.session_state.role == "admin" else "Chat"
                             )
                             st.session_state.pop("ha_anon_chat_key", None)
+                            remember_checked = bool(
+                                st.session_state.get("auth_remember_me", False)
+                            )
+                            # Auto-fill (isim yazınca şifrenin gelmesi) ve
+                            # cookie tabanlı auto-login YALNIZCA kullanıcı
+                            # "Remember me"yi açıkça işaretlediyse aktif olur.
+                            # Aksi halde önceden hatırlanan kayıt da silinir.
+                            if st.session_state.role == "user":
+                                if remember_checked:
+                                    _store_remembered_password(login_user, login_pass)
+                                else:
+                                    _forget_remembered_password(login_user)
+                            # Persist (or clear) the remember-me cookie so the
+                            # next visit can auto-login the same browser.
+                            cookie_mgr = _get_cookie_manager()
+                            wrote_cookie = False
+                            if cookie_mgr is not None:
+                                try:
+                                    if remember_checked:
+                                        token = _make_remember_token(login_user)
+                                        cookie_mgr.set(
+                                            cookie=_REMEMBER_COOKIE_NAME,
+                                            val=token,
+                                            expires_at=datetime.utcnow()
+                                            + timedelta(days=_REMEMBER_TTL_DAYS),
+                                            key="ha_cookie_login_set",
+                                        )
+                                        wrote_cookie = True
+                                    else:
+                                        cookie_mgr.delete(
+                                            cookie=_REMEMBER_COOKIE_NAME,
+                                            key="ha_cookie_login_clear",
+                                        )
+                                        wrote_cookie = True
+                                except Exception:
+                                    _logger.debug(
+                                        "Remember-me cookie write failed",
+                                        exc_info=True,
+                                    )
                             st.success("Login successful.")
+                            # Streamlit'in cookie set/delete komutunu tarayıcıya
+                            # iletmesi için kısa bir yumuşatma. ``st.rerun()``
+                            # mevcut run'ı kestiğinde queued mesajların flush
+                            # olmasına imkan veriyor.
+                            if wrote_cookie:
+                                time.sleep(0.4)
                             st.rerun()
 
                     if submit_register:
@@ -3774,7 +4452,10 @@ def run() -> None:
         initial_sidebar_state="expanded",
     )
     _inject_global_styles()
+    _inject_chat_layout_script()
     _init_auth_state()
+    _initialize_cookie_manager()
+    _try_auto_login_from_cookie()
     _normalize_active_page()
 
     # ``guest_on_login``: hide sidebar on full-bleed auth; Login is a bottom sidebar button, not
@@ -3824,7 +4505,13 @@ def run() -> None:
                     key="ha_nav_user",
                 )
                 st.session_state.active_page = selected_section
-                if st.button(get_string(lang, "new_chat"), use_container_width=True, type="primary"):
+                if st.button(
+                    get_string(lang, "new_chat"),
+                    use_container_width=True,
+                    type="primary",
+                    icon=":material/edit_square:",
+                    key="ha_sidebar_new_chat",
+                ):
                     start_new_chat(st.session_state.username)
                     _sync_conversations_to_session(st.session_state.username)
                     st.session_state.active_page = "Chat"
@@ -3866,7 +4553,12 @@ def run() -> None:
                                 _sync_conversations_to_session(st.session_state.username)
                                 st.session_state.active_page = "Chat"
                                 st.rerun()
-                        if st.button(get_string(lang, "delete_chat"), use_container_width=True):
+                        if st.button(
+                            get_string(lang, "delete_chat"),
+                            use_container_width=True,
+                            icon=":material/delete:",
+                            key="ha_sidebar_delete_chat",
+                        ):
                             if delete_chat(st.session_state.username, selected_chat_id):
                                 _sync_conversations_to_session(st.session_state.username)
                                 st.session_state.active_page = "Chat"
@@ -3912,6 +4604,15 @@ def run() -> None:
 
             if not st.session_state.is_logged_in:
                 with st.container(key="ha_sidebar_login_row"):
+                    st.markdown(
+                        (
+                            '<div class="ha-sidebar-login-card">'
+                            f'<p class="ha-sidebar-login-title">{_html.escape(get_string(lang, "sidebar_login_title"))}</p>'
+                            f'<p class="ha-sidebar-login-hint">{_html.escape(get_string(lang, "sidebar_login_hint"))}</p>'
+                            "</div>"
+                        ),
+                        unsafe_allow_html=True,
+                    )
                     if st.button(
                         _section_nav_label(lang, "Login"),
                         use_container_width=True,
@@ -3922,7 +4623,12 @@ def run() -> None:
                         st.rerun()
 
             if st.session_state.is_logged_in:
-                if st.button(get_string(lang, "logout"), use_container_width=True):
+                if st.button(
+                    get_string(lang, "logout"),
+                    use_container_width=True,
+                    icon=":material/logout:",
+                    key="ha_sidebar_logout",
+                ):
                     _logout()
 
     selected_section = st.session_state.get("active_page", "Chat")

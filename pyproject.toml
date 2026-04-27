@@ -11,6 +11,8 @@ readme = "README.md"
 dependencies = [
     # UI framework
     "streamlit>=1.38.0,<2.0.0",
+    # Browser cookie support for "Remember me" persistence on login page.
+    "extra-streamlit-components>=0.1.71,<0.2.0",
     # LangChain 1.x stack + LangGraph
     "langchain>=1.0.0,<2.0.0",
     "langchain-core>=1.0.0,<2.0.0",
