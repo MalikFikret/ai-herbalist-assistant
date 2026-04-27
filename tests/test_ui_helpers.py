@@ -90,8 +90,13 @@ def test_source_entry_label_pdf_and_url():
 
 def test_verify_admin_password_env_plain(monkeypatch):
     monkeypatch.setenv("HA_ADMIN_PASSWORD", "s3cret")
+    # Clear hash/salt so the plain-text path is actually exercised.
+    monkeypatch.delenv("HA_ADMIN_PASSWORD_HASH", raising=False)
+    monkeypatch.delenv("HA_ADMIN_PASSWORD_SALT", raising=False)
     # Force-reimport so module-level env reads pick up our override.
     sys.modules.pop("herbalist_assistant.ui.streamlit_app", None)
+    sys.modules.pop("herbalist_assistant.ui.auth", None)
+    sys.modules.pop("herbalist_assistant.ui.cookies", None)
     ui = importlib.import_module("herbalist_assistant.ui.streamlit_app")
 
     assert ui._verify_admin_password("s3cret") is True
@@ -109,6 +114,7 @@ def test_verify_admin_password_env_hash(monkeypatch):
     monkeypatch.delenv("HA_ADMIN_PASSWORD", raising=False)
 
     sys.modules.pop("herbalist_assistant.ui.streamlit_app", None)
+    sys.modules.pop("herbalist_assistant.ui.auth", None)
     ui = importlib.import_module("herbalist_assistant.ui.streamlit_app")
 
     assert ui._verify_admin_password(pw) is True

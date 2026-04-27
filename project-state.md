@@ -1,6 +1,6 @@
 # AI Herbalist Assistant — Project State
 
-_Last updated: 2026-04-21_
+_Last updated: 2026-04-27_
 
 This document is the living architecture / status brief for the project.
 It replaces the original "state of the codebase" snapshot and reflects the
@@ -62,12 +62,18 @@ Python requirement: **3.10+** (CI matrix covers 3.10 and 3.11).
 │   │   ├── models.py          # User / ChatSession / ChatMessage ORM
 │   │   ├── engine.py          # Engine + session_scope() + init_db()
 │   │   ├── repository.py      # High-level ops used by the UI layer
-│   │   └── migration.py       # One-time JSON -> SQLite importer
+│   │   └── migration.py       # DB bootstrap hook (schema init)
 │   └── ui/
+│       ├── auth.py            # Authentication logic & credentials
+│       ├── components.py      # Reusable Streamlit UI components
+│       ├── cookies.py         # Cookie management logic
 │       ├── i18n.py            # EN / TR string tables
 │       ├── resources.py       # @st.cache_resource factories + reindex
 │       ├── state.py           # thin session-state glue over repository
-│       └── streamlit_app.py   # pages, auth flow, chat UI, admin panel
+│       ├── streamlit_app.py   # Main orchestrator / entrypoint
+│       ├── styles.py          # Centralized CSS and styling definitions
+│       ├── pages/             # Sub-pages (admin.py, chat.py, login.py, profile.py)
+│       └── static/            # Static assets (images, fonts, etc.)
 ├── tests/
 │   ├── conftest.py            # sys.path + streamlit / langchain stubs
 │   ├── test_graph_extractors.py
@@ -135,8 +141,9 @@ Key properties baked in during the hardening pass:
 
 ### 4.2 Streamlit UI (`ui/streamlit_app.py`)
 
-- Pages: **Chat**, **Admin Panel** (admins only), **About**. The History
-  page was removed; users reach prior chats from the new Sidebar UI.
+- Pages: **Chat**, **Admin Panel** (admins only), **Profile**, **Login**. The UI is
+  modularized into `ui/pages/` with `ui/streamlit_app.py` acting as a lightweight orchestrator.
+  Users reach prior chats from the new Sidebar UI.
 - Bilingual (EN / TR) via `ui/i18n.py`. All new strings were added to
   both tables.
 - **Async, graceful timeout.** Agent invocation uses
@@ -170,12 +177,10 @@ Key properties baked in during the hardening pass:
   Foreign keys are enabled via SQLite `PRAGMA foreign_keys=ON`, with
   `ON DELETE CASCADE` so deleting a chat removes its messages and
   deleting a user removes their chats.
-- **One-time JSON migration.** On every startup,
+- **Database initialization.** On every startup,
   `herbalist_assistant.db.ensure_database_ready()` creates any missing
-  tables and, if `.users.json` / `.chat_history.json` are still present,
-  imports them. The legacy files are then renamed to
-  `*.migrated-backup-<timestamp>` so the next startup is a no-op. No
-  user, chat, message, source, or 👍 / 👎 signal is lost.
+  tables. The legacy JSON migration logic has been removed as the transition
+  to SQLite is complete.
 - **User auth.** PBKDF2-SHA256 with a per-user 16-byte salt
   (`secrets.token_hex(16)`). `_hash_password` + `_verify_password`
   remain pure Python; only the storage backend changed.
@@ -335,3 +340,11 @@ The most valuable items explicitly deferred for later:
   chat history, sources, feedback (👍/👎), and active-chat pointers
   are preserved; conversational memory and the Admin panel's feedback
   viewer were rewired on top of the DB.
+- **Advanced Graph Hardening** Fixed Tavily web-search import, optimized
+  LLM cache memory usage, capped document processing in serial CRAG grading,
+  and ensured consistent state returns in the web-search node.
+- **Modular UI Refactor** `src/herbalist_assistant/ui/streamlit_app.py` was
+  broken down into a clean package structure (`auth.py`, `components.py`,
+  `styles.py`, `pages/`, etc.) to improve maintainability.
+- **Migration Code Cleanup** Legacy JSON-to-SQLite migration logic was removed
+  from `db/migration.py` now that the data transition is complete.

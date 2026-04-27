@@ -1,4 +1,4 @@
-"""Unit tests for the JSON extractors in advanced_graph.py.
+"""Unit tests for the JSON extractors in graph/extractors.py.
 
 These are pure functions that parse LLM output; they never need a live
 LLM and run offline in milliseconds.
@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from herbalist_assistant.graph.advanced_graph import (
+from herbalist_assistant.graph.extractors import (
     _dedupe_documents,
     _extract_expanded_queries,
     _extract_route,
