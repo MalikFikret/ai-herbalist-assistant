@@ -1,1 +1,17 @@
+# Run the application
 streamlit run src/app.py --server.address 0.0.0.0 --server.port 8502
+
+# Run the evaluation
+python scripts/evaluate_system.py
+
+# Visualize the result of evaluation
+python scripts/visualize_results.py
+
+# Draw the graph
+python scripts/visualize_graph.py
+
+# Generate admin password hash
+python scripts/generate_admin_password_hash.py --password "MyStrongPassword123"
+
+# Generate admin password salt
+python scripts/generate_admin_password_salt.py --password "MyStrongPassword123"

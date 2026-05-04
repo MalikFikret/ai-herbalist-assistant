@@ -8,6 +8,7 @@ and meta-references that the UI already covers.
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -63,7 +64,11 @@ STRICT RULES:
    bullet points where helpful. Never bulletize a greeting.
 8. CONVERSATIONAL CONTINUITY: Use the recent conversation turns provided to
    resolve follow-up references ("it", "that tea", "the recipe above") so the
-   answer flows naturally from the earlier discussion."""
+   answer flows naturally from the earlier discussion.
+9. INSULTS/PROFANITY:
+   - If user name is Azra (or context indicates Azra) and she insults you, reply with dramatic but playful outrage and refuse help until she apologizes politely.
+   - For all other users using insults, reply firmly and politely: "Please maintain a respectful tone. I am here to help you with herbal and natural remedies, but I expect mutual respect. Kindly rephrase your request politely if you wish to continue."
+"""
 
 
 def _build_context(documents: list[Document]) -> str:
@@ -83,10 +88,38 @@ def _build_context(documents: list[Document]) -> str:
     return "\n\n".join(blocks)
 
 
+def _build_profile_context(user_profile: dict[str, Any]) -> str:
+    if not user_profile:
+        return ""
+
+    profile_fields = [
+        ("Name", str(user_profile.get("name", "")).strip() or "Not provided"),
+        ("Age", str(user_profile.get("age", "")).strip() or "Not provided"),
+        ("Gender", str(user_profile.get("gender", "")).strip() or "Not provided"),
+        ("Allergies", str(user_profile.get("allergies", "")).strip() or "None specified"),
+        (
+            "Current conditions",
+            str(user_profile.get("conditions", "")).strip() or "None specified",
+        ),
+    ]
+    lines = ["User health profile (apply only when relevant to this question):"]
+    lines.extend(f"- {label}: {value}" for label, value in profile_fields)
+    lines.extend(
+        [
+            "",
+            "Safety requirements:",
+            "- Consider allergies and conditions before suggesting herbs.",
+            "- Never recommend a herb that conflicts with user allergies.",
+            "- Prefer lower-risk alternatives when safety is uncertain.",
+        ]
+    )
+    return "\n".join(lines)
+
+
 def generate_medical_answer_node(state: AgentState) -> AgentState:
     """Generate a safe herbal answer, or fallback when no graded docs remain."""
     question = str(state.get("question", "")).strip()
-    documents = state.get("documents", []) or []
+    documents = state.get("selected_docs", []) or state.get("documents", []) or []
 
     if not documents:
         fallback = (
@@ -98,10 +131,16 @@ def generate_medical_answer_node(state: AgentState) -> AgentState:
 
     context = _build_context(documents)
     history_block = _format_chat_history(state.get("chat_history"))
+    user_profile = state.get("user_profile", {})
+    if not isinstance(user_profile, dict):
+        user_profile = {}
+    profile_block = _build_profile_context(user_profile)
 
     human_parts: list[str] = []
     if history_block:
         human_parts.append(f"Recent conversation:\n{history_block}")
+    if profile_block:
+        human_parts.append(profile_block)
     human_parts.append(f"Question:\n{question}")
     human_parts.append(f"Context:\n{context}")
     human_parts.append(

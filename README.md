@@ -89,11 +89,11 @@ into your `.env` (and remove `HA_ADMIN_PASSWORD`).
 All users, chat sessions, messages, sources and 👍 / 👎 feedback are
 stored in a local SQLite database (`.herbalist.db` by default). The
 schema is managed by SQLAlchemy and created automatically on first
-startup. If you are upgrading from an older build that used
-`.users.json` / `.chat_history.json`, those files are imported into
-SQLite on the next run and then renamed to
-`*.migrated-backup-<timestamp>` — keep them around until you've
-verified everything, then delete at your leisure.
+startup via an idempotent bootstrap hook (`ensure_database_ready()`).
+
+Legacy `.users.json` / `.chat_history.json` files are no longer migrated
+automatically at runtime. If those files exist from an older build, treat
+them as archival backups unless you run a separate one-off migration.
 
 For production deployments, mount `.herbalist.db` on a persistent
 volume so chats and users survive container restarts (see the

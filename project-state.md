@@ -1,6 +1,6 @@
 # AI Herbalist Assistant — Project State
 
-_Last updated: 2026-04-27_
+_Last updated: 2026-05-04_
 
 This document is the living architecture / status brief for the project.
 It replaces the original "state of the codebase" snapshot and reflects the
@@ -26,7 +26,7 @@ admin panel for managing the knowledge base, model, and user feedback.
 | ------------------ | ---------------------------------------------------- |
 | UI                 | Streamlit 1.38+                                      |
 | Orchestration      | LangGraph 1.x (`langgraph.graph.StateGraph`)         |
-| LLM                | Groq, Google Gemini, DeepSeek (via LangChain)        |
+| LLM                | Groq (`llama-3.1-8b-instant`, `llama-3.3-70b-versatile`), Google Gemini, DeepSeek (via LangChain) |
 | Embeddings         | `sentence-transformers/all-MiniLM-L6-v2` via HF      |
 | Vector store       | Chroma 1.x (persisted to `.chroma_db/`)              |
 | Document ingest    | `pypdf` + `RecursiveCharacterTextSplitter`           |
@@ -47,22 +47,31 @@ Python requirement: **3.10+** (CI matrix covers 3.10 and 3.11).
 ├── src/herbalist_assistant/
 │   ├── __init__.py            # eager .env load + LangSmith banner
 │   ├── config.py              # paths, chunk sizes, model defaults
-│   ├── utils.py
-│   ├── llm/groq.py            # ChatGroq factory with env-based API key
+│   ├── llm/
+│   │   └── groq.py            # ChatGroq factory with env-based API key
 │   ├── rag/
 │   │   ├── embeddings.py      # HuggingFace embeddings factory
-│   │   ├── pdf_loader.py      # PyPDFLoader + text splitter
+│   │   ├── loaders.py         # PyPDFLoader wrappers
+│   │   ├── splitter.py        # RecursiveCharacterTextSplitter logic
 │   │   └── vectorstore.py     # Chroma persistent store
 │   ├── graph/
-│   │   └── advanced_graph.py  # THE orchestration graph (router,
-│   │                           #  expand+retrieve, grader, generator,
-│   │                           #  direct-answer) + prompts, extractors,
-│   │                           #  chat-history formatter, cache reset
+│   │   ├── advanced_graph.py  # THE orchestration graph (router, expand+retrieve, etc)
+│   │   ├── extractors.py      # Output parsing and info extraction
+│   │   ├── runtime.py         # Execution handling
+│   │   ├── state.py           # AgentState definition
+│   │   └── nodes/             # LangGraph node implementations
+│   │       ├── __init__.py
+│   │       ├── direct_answer.py
+│   │       ├── grading.py
+│   │       ├── medical_answer.py
+│   │       ├── retrieval.py
+│   │       ├── router.py
+│   │       └── web_search.py
 │   ├── db/
 │   │   ├── models.py          # User / ChatSession / ChatMessage ORM
 │   │   ├── engine.py          # Engine + session_scope() + init_db()
 │   │   ├── repository.py      # High-level ops used by the UI layer
-│   │   └── migration.py       # DB bootstrap hook (schema init)
+│   │   └── migration.py       # Idempotent schema bootstrap (calls init_db())
 │   └── ui/
 │       ├── auth.py            # Authentication logic & credentials
 │       ├── components.py      # Reusable Streamlit UI components
@@ -72,11 +81,21 @@ Python requirement: **3.10+** (CI matrix covers 3.10 and 3.11).
 │       ├── state.py           # thin session-state glue over repository
 │       ├── streamlit_app.py   # Main orchestrator / entrypoint
 │       ├── styles.py          # Centralized CSS and styling definitions
-│       ├── pages/             # Sub-pages (admin.py, chat.py, login.py, profile.py)
+│       ├── pages/             # Sub-pages
+│       │   ├── __init__.py
+│       │   ├── admin.py
+│       │   ├── chat.py
+│       │   ├── login.py
+│       │   └── profile.py
 │       └── static/            # Static assets (images, fonts, etc.)
+├── scripts/
+│   ├── generate_admin_password_hash.py
+│   └── visualize_graph.py
 ├── tests/
 │   ├── conftest.py            # sys.path + streamlit / langchain stubs
+│   ├── test_db_repository.py  # SQLite backend tests
 │   ├── test_graph_extractors.py
+│   ├── test_graph_router.py   # Deterministic router safeguards
 │   ├── test_ui_helpers.py
 │   └── test_state.py
 ├── .github/workflows/ci.yml   # ruff + pytest on push/PR
@@ -84,8 +103,6 @@ Python requirement: **3.10+** (CI matrix covers 3.10 and 3.11).
 ├── data/                       # herbal PDFs (gitignored content)
 ├── .chroma_db/                 # persisted vector DB (gitignored)
 ├── .herbalist.db               # SQLite store (users, chats, messages, feedback)
-├── .users.json.migrated-backup-* # legacy, auto-renamed post-migration
-├── .chat_history.json.migrated-backup-* # legacy, auto-renamed post-migration
 ├── Dockerfile                  # production image
 ├── .dockerignore
 ├── pyproject.toml              # canonical dependency + tool config
@@ -93,6 +110,7 @@ Python requirement: **3.10+** (CI matrix covers 3.10 and 3.11).
 ├── README.md
 ├── SECURITY.md
 ├── langgraph.json              # LangGraph Studio config
+├── langgraph_diagram.png       # Generated graph visualization
 └── project-state.md            # ← you are here
 ```
 
@@ -103,26 +121,41 @@ Python requirement: **3.10+** (CI matrix covers 3.10 and 3.11).
 ### 4.1 LangGraph agent (`graph/advanced_graph.py`)
 
 ```
-   route_question ─► VECTOR_SEARCH ─► expand_and_retrieve ─► grade_documents
-          │                                                         │
-          └────► DIRECT_ANSWER ─► direct_answer_node ─► END          ├─► relevant ─► generate_medical_answer ─► END
-                                                                    └─► irrelevant ─► web_search_node ─► generate_medical_answer ─► END
+route_question
+  ├─► DIRECT_ANSWER ─► direct_answer_node ─► answer_relevance_node ─► END
+  └─► VECTOR_SEARCH ─► expand_and_retrieve_node ─► grade_documents_node
+                                              ├─► has_docs ─► generate_medical_answer_node ─► hallucination_grader_node
+                                              │                                                ├─► answer_relevance ─► answer_relevance_node ─► END
+                                              │                                                └─► retry_web ─► web_search_node ─► generate_medical_answer_node (loop, max 3 retries)
+                                              └─► no_docs ─► web_search_node ─► generate_medical_answer_node
 ```
 
 Key properties baked in during the hardening pass:
 
-- **Conversational memory.** `AgentState` carries `chat_history`
-  (recent user / assistant turns). The router, query-expansion, grader,
-  and generator all receive the formatted history so follow-ups
-  ("how do I prepare it?") resolve against the earlier herbal subject.
+- **Expanded state + quality gates.** `AgentState` now carries
+  `candidate_docs`, `selected_docs`, `generation_retries`,
+  `hallucination_score`, `answer_relevance_score`, and `user_profile`.
+  This enables a multi-step answer quality loop instead of a single-pass
+  RAG answer.
+- **Conversational memory + profile-aware retrieval.** `chat_history` is
+  threaded through router / expansion / generation, and query expansion
+  can use `user_profile` (age, allergies, conditions, meds) when relevant.
 - **Model selector wiring.** LLM factories
   (`_router_llm`, `_expansion_llm`, `_grader_llm`, `_generator_llm`)
-  are `@lru_cache`-d keyed on `model_name`. Supported models include
-  `llama-3.1-8b-instant`, `mixtral-8x7b-32768`, `gemini-1.5-flash`, and
-  `deepseek-chat`. The UI passes `st.session_state.selected_model` into
-  the graph state.
-- **Hybrid Search.** A `web_search_node` provides fallback search via
-  Tavily or DuckDuckGo when local documents do not pass the CRAG grader.
+  live in `graph/runtime.py` and are `@lru_cache`-d keyed on `model_name`.
+  Supported models include `llama-3.1-8b-instant`, `llama-3.3-70b-versatile`,
+  `gemini-1.5-flash`, and `deepseek-chat`. The UI passes
+  `st.session_state.selected_model` into the graph state.
+- **Numerical CRAG grading.** Candidate documents are scored 0-100 via
+  structured output (`DocumentGrade`), filtered at >70, and top-3 are kept.
+  If no document passes, the workflow falls back to web search.
+- **Grounding + intent checks.** After answer generation, the graph runs:
+  - `hallucination_grader_node` (`HallucinationGrade`) to verify grounding.
+  - `answer_relevance_node` (`AnswerRelevanceGrade`) to verify the answer
+    actually addresses user intent.
+- **Retryable web-search recovery.** When hallucination grading fails, the
+  graph can rewrite search queries and retry web search/generation, bounded
+  by `generation_retries < 3`.
 - **Reindex cache-coherency.** `advanced_graph.reset_runtime_caches()`
   clears every `lru_cache` (including the retriever). `resources.reindex_pdfs()`
   calls it after rebuilding Chroma so retrieval never uses a stale handle.
@@ -136,8 +169,9 @@ Key properties baked in during the hardening pass:
     meta-references ("based on the context…").
 - **Structured error handling.** Every LLM call is wrapped in
   `try / except` with `logger.exception`. Failures degrade gracefully:
-  router → `VECTOR_SEARCH`, expansion → original question, grader →
-  keep document, generator → user-friendly fallback.
+  router → `VECTOR_SEARCH`, expansion → original question, grading →
+  fail-closed document drop, generation → user-friendly fallback,
+  web-query rewrite → original question.
 
 ### 4.2 Streamlit UI (`ui/streamlit_app.py`)
 
@@ -156,7 +190,7 @@ Key properties baked in during the hardening pass:
   - **Sources (N)** — popover (fallback: expander on older Streamlit)
     with one entry per source. PDFs show `file (p. N)`; URL sources are
     clickable — the schema is already extensible (`kind = "pdf" | "url"`).
-  - **👍 / 👎** — toggles; persisted to `.chat_history.json` via
+  - **👍 / 👎** — toggles; persisted to `.herbalist.db` via
     `state.update_message_feedback`.
 - **Admin Panel → User Feedback.** New section lists every 👍 / 👎
   across all users / chats, newest-first, with filters (all / up / down),
@@ -219,7 +253,7 @@ See `SECURITY.md` for the full policy. Highlights:
 
 - **Ruff** (`pyproject.toml` → `[tool.ruff]`) clean on `src/` and
   `tests/`.
-- **Pytest** suite (52 tests) covering:
+- **Pytest** suite (53 tests) covering:
   - JSON extractors: `_strip_fences`, `_extract_route`,
     `_extract_expanded_queries`, `_extract_score`.
   - LLM-output sanitizer: `_sanitize_medical_answer`.
@@ -241,6 +275,9 @@ See `SECURITY.md` for the full policy. Highlights:
     append → title promotion, feedback round-trip with
     `st.session_state` sync, `iter_all_feedback`, and switching
     between chats.
+  - **Router safeguards (`tests/test_graph_router.py`):** deterministic
+    identity/greeting bypass, LLM-backed medical routing, and lexical
+    fallback when the LLM errors.
 - **CI**: `.github/workflows/ci.yml` runs ruff + pytest on Python 3.10
   and 3.11 for every push / PR. Heavy third-party libs (chromadb,
   sentence-transformers, etc.) are stubbed inside `tests/conftest.py`
@@ -287,10 +324,9 @@ The most valuable items explicitly deferred for later:
    container; for horizontal scale, swap the engine URL to Postgres
    (`postgresql+psycopg://...`) — the repository + models are
    dialect-agnostic. No UI change needed.
-2. **Structured LLM output (`with_structured_output`).** The JSON-mode
-   prompts + regex fallbacks still work, but migrating to Pydantic
-   structured output would let us drop `_strip_fences` and the regex
-   extractors.
+2. **Wiring relevance grade to regeneration.** `answer_relevance_node`
+   currently records `answer_relevance_score` as a terminal quality signal.
+   A future improvement is to route `"no"` into a guided regeneration step.
 3. **Retrieval caching** (intentionally deferred per product decision).
 4. **URL sources.** Schema and popover already support `kind: "url"`;
    still need an ingestion path that produces URL-kind sources.
@@ -302,7 +338,7 @@ The most valuable items explicitly deferred for later:
 
 ---
 
-## 9. Change log (hardening pass)
+## 9. Change log (latest updates)
 
 - **P0.1** Admin password read from env, PBKDF2-supported, warning on
   insecure default.
@@ -334,12 +370,10 @@ The most valuable items explicitly deferred for later:
   `.dockerignore`, `tests/` + CI, this rewrite of `project-state.md`.
 - **P1.13** SQLite + SQLAlchemy backend (`herbalist_assistant.db`)
   replaces `.users.json` + `.chat_history.json`. Schema: `users`,
-  `chat_sessions`, `chat_messages`. `ensure_database_ready()` creates
-  the schema and runs the one-time JSON migration on startup, then
-  renames the legacy files to `*.migrated-backup-<timestamp>`. Existing
-  chat history, sources, feedback (👍/👎), and active-chat pointers
-  are preserved; conversational memory and the Admin panel's feedback
-  viewer were rewired on top of the DB.
+  `chat_sessions`, `chat_messages`. `ensure_database_ready()` now acts
+  as schema bootstrap only (idempotent `init_db()`); historical one-time
+  JSON migration logic has been removed from runtime startup. Existing
+  chat memory and the Admin panel's feedback viewer are fully DB-backed.
 - **Advanced Graph Hardening** Fixed Tavily web-search import, optimized
   LLM cache memory usage, capped document processing in serial CRAG grading,
   and ensured consistent state returns in the web-search node.
@@ -348,3 +382,21 @@ The most valuable items explicitly deferred for later:
   `styles.py`, `pages/`, etc.) to improve maintainability.
 - **Migration Code Cleanup** Legacy JSON-to-SQLite migration logic was removed
   from `db/migration.py` now that the data transition is complete.
+- **Graph Quality Loop Upgrade** Added structured graders in
+  `advanced_graph.py` (`DocumentGrade`, `HallucinationGrade`,
+  `AnswerRelevanceGrade`) and extended the workflow with
+  `hallucination_grader_node` + `answer_relevance_node`.
+- **Retrieval/Grading Refactor** `expand_and_retrieve_node` now stores
+  deduped top-10 `candidate_docs`; `grade_documents_node` scores each doc
+  0-100 and keeps high-confidence `selected_docs`.
+- **Web Search Retry Strategy** `web_search_node` can rewrite queries on
+  retries and aggregate/dedupe results across multiple rewritten queries.
+- **Router/State Enhancements** Router initializes `generation_retries`,
+  and state schema now includes retry counters, quality scores, profile
+  context, and staged document collections.
+- **Docs Alignment** README now reflects that runtime auto-migration from
+  legacy JSON files is removed; database startup is schema bootstrap only.
+- **Model Update** Replaced decommissioned `mixtral-8x7b-32768` with
+  `llama-3.3-70b-versatile` across all LLM configuration code.
+- **Router Tests** Added `tests/test_graph_router.py` covering deterministic
+  routing safeguards and lexical fallback paths (3 tests).

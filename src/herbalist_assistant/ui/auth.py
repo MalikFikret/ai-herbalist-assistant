@@ -47,13 +47,13 @@ _ADMIN_PASSWORD_SALT_SETTING_KEY = "admin_password_salt"
 
 AVAILABLE_MODELS: List[str] = [
     "llama-3.1-8b-instant",
-    "mixtral-8x7b-32768",
+    "llama-3.3-70b-versatile",
     "gemini-1.5-flash",
     "deepseek-chat",
 ]
 DEFAULT_MODEL = "llama-3.1-8b-instant"
 AVAILABLE_WEB_SEARCH_PROVIDERS: List[str] = ["Tavily", "DuckDuckGo"]
-DEFAULT_WEB_SEARCH_PROVIDER = "DuckDuckGo"
+DEFAULT_WEB_SEARCH_PROVIDER = "Tavily"
 
 
 def _hash_password(password: str, salt: str) -> str:

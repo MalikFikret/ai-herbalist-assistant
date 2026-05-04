@@ -3,7 +3,6 @@
 import asyncio
 import html as _html
 import logging
-import re
 import secrets
 from pathlib import Path
 from typing import Any, Dict, List
@@ -26,16 +25,6 @@ from ..state import (
 )
 
 _logger = logging.getLogger("herbalist_assistant.ui.pages.chat")
-
-ALLERGY_HERB_ALIASES: Dict[str, List[str]] = {
-    "papatya/chamomile": ["papatya", "chamomile", "camomile", "kamille"],
-    "zencefil/ginger": ["zencefil", "ginger"],
-    "nane/mint": ["nane", "mint", "peppermint"],
-    "lavanta/lavender": ["lavanta", "lavender"],
-    "ekinazya/echinacea": ["ekinazya", "echinacea"],
-    "rezene/fennel": ["rezene", "fennel"],
-    "isirgan/nettle": ["isirgan", "ısırgan", "nettle"],
-}
 
 # Maximum number of past messages we forward to the agent graph for memory.
 # Matches _MAX_HISTORY_MESSAGES in graph/extractors.py.
@@ -89,55 +78,6 @@ def _invoke_agent_with_timeout(
         raise TimeoutError(
             f"Agent response exceeded {timeout_sec}s limit"
         ) from exc
-
-
-def _build_profile_context(profile: Dict[str, str]) -> str:
-    allergies = profile.get("allergies", "").strip()
-    conditions = profile.get("conditions", "").strip()
-    if not allergies and not conditions:
-        return ""
-
-    blocked_herbs = _extract_blocked_herbs(allergies)
-    blocked_text = ", ".join(blocked_herbs) if blocked_herbs else "None"
-
-    context_lines = [
-        "User health profile:",
-        f"- Name: {profile.get('name', '').strip() or 'Not provided'}",
-        f"- Age: {profile.get('age', '').strip() or 'Not provided'}",
-        f"- Gender: {profile.get('gender', '').strip() or 'Not provided'}",
-        f"- Allergies: {allergies or 'None specified'}",
-        f"- Current conditions: {conditions or 'None specified'}",
-        f"- Strict blocked herbs (do not recommend): {blocked_text}",
-        "",
-        "Safety instructions for this answer:",
-        "- Consider allergy and condition risks before suggesting herbs.",
-        "- If a herb matches user allergy, NEVER recommend it.",
-        "- Avoid potentially harmful options.",
-        "- Provide safer alternatives when risk exists.",
-        "",
-        "Response format (mandatory):",
-        "1) Recommendations list",
-        "Keep answer concise, non-repetitive, and natural Turkish.",
-    ]
-    return "\n".join(context_lines)
-
-
-def _extract_blocked_herbs(allergies_text: str) -> List[str]:
-    text = (allergies_text or "").lower()
-    blocked: List[str] = []
-
-    for herb_name, aliases in ALLERGY_HERB_ALIASES.items():
-        if any(alias in text for alias in aliases):
-            blocked.append(herb_name)
-
-    # Also include free-form allergy entries as blocked terms.
-    extra_terms = re.split(r"[,;/\n]+", text)
-    for term in extra_terms:
-        clean = term.strip()
-        if len(clean) >= 3 and clean not in blocked:
-            blocked.append(clean)
-
-    return blocked
 
 
 def _collect_chat_history_for_agent() -> List[Dict[str, str]]:
@@ -226,8 +166,7 @@ def _generate_ai_response(user_input: str, profile: Dict[str, str]) -> tuple[str
     from ..auth import DEFAULT_MODEL, DEFAULT_WEB_SEARCH_PROVIDER
 
     lang = st.session_state.get("language", "en")
-    profile_context = _build_profile_context(profile)
-    question_payload = user_input if not profile_context else f"{user_input}\n\n{profile_context}"
+    normalized_profile = profile if isinstance(profile, dict) else {}
     chat_history = _collect_chat_history_for_agent()
     model_name = (
         st.session_state.get("selected_model")
@@ -246,7 +185,8 @@ def _generate_ai_response(user_input: str, profile: Dict[str, str]) -> tuple[str
             status.write(get_string(lang, "agent_status_generating"))
             final_state: Dict[str, Any] = _invoke_agent_with_timeout(
                 {
-                    "question": question_payload,
+                    "question": user_input,
+                    "user_profile": normalized_profile,
                     "chat_history": chat_history,
                     "model_name": model_name,
                     "web_search_provider": web_search_provider,
@@ -270,7 +210,7 @@ def _generate_ai_response(user_input: str, profile: Dict[str, str]) -> tuple[str
     except Exception:
         _logger.exception("Agent graph invocation failed for question=%r", user_input)
         fallback = get_string(lang, "agent_error_msg")
-        if profile_context:
+        if normalized_profile:
             fallback += " " + get_string(lang, "agent_error_profile_hint")
         return fallback, []
 

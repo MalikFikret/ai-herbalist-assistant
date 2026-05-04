@@ -84,7 +84,6 @@ from .components import (  # noqa: E402, F811
     _source_entry_label,
 )
 from .pages.chat import (  # noqa: E402, F811
-    _extract_blocked_herbs,
     _extract_sources_from_docs,
 )
 
@@ -173,10 +172,11 @@ def run() -> None:
                         chat_id = chat.get("id", "")
                         if not chat_id or chat_id in seen_chat_ids:
                             continue
-                        if int(chat.get("message_count", 0) or 0) <= 1:
-                            continue
-                        if chat.get("title", get_string(lang, "new_chat")).strip().lower() == get_string(lang, "new_chat").lower() or chat.get("title", "New Chat").strip().lower() == "new chat":
-                            continue
+                        if chat_id != active_chat_id:
+                            if int(chat.get("message_count", 0) or 0) <= 1:
+                                continue
+                            if chat.get("title", get_string(lang, "new_chat")).strip().lower() == get_string(lang, "new_chat").lower() or chat.get("title", "New Chat").strip().lower() == "new chat":
+                                continue
                         seen_chat_ids.add(chat_id)
                         chats_desc.append(chat)
                     chat_ids = [chat.get("id", "") for chat in chats_desc if chat.get("id")]

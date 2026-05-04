@@ -18,8 +18,8 @@ from herbalist_assistant.llm.groq import create_groq_llm, get_groq_api_key
 
 _logger = logging.getLogger(__name__)
 
-_GROQ_MODELS = {"llama-3.1-8b-instant", "mixtral-8x7b-32768"}
-DEFAULT_WEB_SEARCH_PROVIDER = "DuckDuckGo"
+_GROQ_MODELS = {"llama-3.1-8b-instant", "llama-3.3-70b-versatile"}
+DEFAULT_WEB_SEARCH_PROVIDER = "Tavily"
 
 
 def _resolve_model_name(state: AgentState) -> str:
