@@ -46,7 +46,7 @@ def _create_chat_model(*, model_name: str, temperature: float):
             model_name=model_name,
             temperature=temperature,
         )
-    if model_name == "gemini-1.5-flash":
+    if model_name in ("gemini-1.5-flash", "gemini-2.5-flash"):
         from langchain_google_genai import ChatGoogleGenerativeAI
 
         return ChatGoogleGenerativeAI(

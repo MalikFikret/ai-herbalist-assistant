@@ -1,0 +1,37 @@
+[
+    {
+        "id": "q1_tr",
+        "topic": "mild headache",
+        "language": "tr",
+        "question": "Hafif bir baş ağrısı için iyi bir bitkisel ilaç nedir?",
+        "ideal_answer": "Şakaklara uygulanan nane yağı gerilim baş ağrılarını hafifletebilir ve papatya çayı sakinleştirici, anti-enflamatuar özellikleriyle baş ağrısını azaltabilir. Gümüşdüğme (feverfew) hafif baş ağrılarını önlemek ve tedavi etmek için kullanılan geleneksel bir bitkidir. Zencefil çayı da iltihap azaltarak yardımcı olabilir."
+    },
+    {
+        "id": "q2_tr",
+        "topic": "sleep and insomnia",
+        "language": "tr",
+        "question": "Gece daha iyi uyumama hangi bitkiler yardımcı olabilir?",
+        "ideal_answer": "Kediotu kökü (valerian) uyku kalitesini artırmak ve uykuya dalma süresini kısaltmak için yaygın şekilde çalışılmıştır. Çarkıfelek çiçeği ve melisa da etkili bitkisel sakinleştiricilerdir. Lavanta, ister aromaterapi olarak ister çay olarak tüketilsin, rahatlamayı ve daha iyi uykuyu teşvik eder. Yatmadan önce papatya çayı da popüler bir seçenektir."
+    },
+    {
+        "id": "q3_tr",
+        "topic": "digestive issues",
+        "language": "tr",
+        "question": "Sindirim ve mide sorunları için hangi bitkisel çaylar iyidir?",
+        "ideal_answer": "Nane çayı sindirim sistemi kaslarını gevşetir, şişkinlik ve gaz sorunlarını hafifletir. Zencefil çayı bulantı, hazımsızlık ve mide krampları için mükemmeldir. Rezene çayı şişkinlik ve gaz gidermeye yardımcı olur. Papatya çayı mide zarını yatıştırır ve mide asidi reflüsünde yardımcı olabilir. Meyan kökü (DGL formu) mide zarını koruyabilir."
+    },
+    {
+        "id": "q4_tr",
+        "topic": "immune support during cold",
+        "language": "tr",
+        "question": "Soğuk algınlığı olduğumda bağışıklık sistemimi bitkilerle doğal olarak nasıl güçlendirebilirim?",
+        "ideal_answer": "Ekinezya bağışıklık desteği için en popüler bitkilerden biridir ve soğuk algınlığı süresini kısaltabilir. Mürver meyvesi antiviral özelliklere sahiptir ve üst solunum yolu enfeksiyonlarıyla mücadeleye yardımcı olabilir. Astragalus kökü genel bağışıklığı güçlendirir. Zencefil ve zerdeçal güçlü anti-enflamatuar ve bağışıklık düzenleyici etkilere sahiptir. Sarımsak, bağışıklık fonksiyonunu destekleyen doğal bir antimikrobiyaldir."
+    },
+    {
+        "id": "q5_tr",
+        "topic": "stress and anxiety",
+        "language": "tr",
+        "question": "Stres ve kaygıyı azaltmak için en iyi bitkisel ilaçlar nelerdir?",
+        "ideal_answer": "Ashwagandha, kortizol seviyelerini düşürmek ve stresi yönetmek için bilinen adaptojenik bir bitkidir. Çarkıfelek çiçeği sakinleştirici özelliklere sahiptir ve genel kaygı bozukluğu için kullanılır. Melisa gerginliği azaltır ve ruh halini iyileştirir. Kediotu kökü uyku düzeninin yanı sıra kaygıyı da azaltabilir. Kutsal fesleğen (Tulsi) vücudun stresle başa çıkmasına yardımcı olan ve zihinsel netliği artıran bir adaptojenik bitkidir."
+    }
+]

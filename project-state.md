@@ -89,18 +89,23 @@ Python requirement: **3.10+** (CI matrix covers 3.10 and 3.11).
 │       │   └── profile.py
 │       └── static/            # Static assets (images, fonts, etc.)
 ├── scripts/
+│   ├── evaluate_system.py             # RAG evaluation script
 │   ├── generate_admin_password_hash.py
-│   └── visualize_graph.py
+│   ├── visualize_graph.py
+│   └── visualize_results.py           # Evaluation results dashboard utility
 ├── tests/
 │   ├── conftest.py            # sys.path + streamlit / langchain stubs
 │   ├── test_db_repository.py  # SQLite backend tests
 │   ├── test_graph_extractors.py
 │   ├── test_graph_router.py   # Deterministic router safeguards
 │   ├── test_ui_helpers.py
+│   ├── test_vectorstore_indexing.py   # Vector DB retrieval tests
 │   └── test_state.py
 ├── .github/workflows/ci.yml   # ruff + pytest on push/PR
 ├── .streamlit/
 ├── data/                       # herbal PDFs (gitignored content)
+├── eval_dataset.json           # Evaluation dataset
+├── evaluation_reports/         # Outputs from evaluation scripts
 ├── .chroma_db/                 # persisted vector DB (gitignored)
 ├── .herbalist.db               # SQLite store (users, chats, messages, feedback)
 ├── Dockerfile                  # production image
@@ -400,3 +405,4 @@ The most valuable items explicitly deferred for later:
   `llama-3.3-70b-versatile` across all LLM configuration code.
 - **Router Tests** Added `tests/test_graph_router.py` covering deterministic
   routing safeguards and lexical fallback paths (3 tests).
+- **RAG Technical Evaluation Upgrade** Added `scripts/evaluate_system.py` for asynchronous RAG evaluation tracking latency, hallucination, and relevance metrics. Integrated a multi-subplot technical dashboard generation via `scripts/visualize_results.py` to analyze system performance.

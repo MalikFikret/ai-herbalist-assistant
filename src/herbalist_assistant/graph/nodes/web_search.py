@@ -31,11 +31,24 @@ _PROVIDER_DUCK = "DuckDuckGo"
 
 RETRY_WEB_QUERY_SYSTEM = """You rewrite web search queries for a herbal assistant.
 
-The previous attempt did not yield grounded enough results. Produce up to 3 NEW
-queries that are meaningfully different from the original phrasing, mixing
-broader and more specific variants to improve recall and precision.
+The previous attempt did not yield grounded enough results.
+
+LANGUAGE PRIORITY (MANDATORY):
+- Detect the language of the original user question.
+- Generate primary retry queries in that same language first.
+- Optionally include additional fallback cross-language queries (for example
+  English scientific terminology), but only after primary-language queries.
+
+Produce NEW queries that are meaningfully different from the original phrasing,
+mixing broader and more specific variants to improve recall and precision.
 
 Avoid returning the exact original query. Return only JSON:
+{
+  "primary_queries": ["same-language q1", "same-language q2", "..."],
+  "fallback_queries": ["optional cross-language q1", "..."]
+}
+
+Backward-compatible format is also accepted:
 {"queries": ["q1", "q2", "q3"]}"""
 
 
@@ -45,24 +58,33 @@ def _extract_retry_queries(raw: str, original_question: str) -> list[str]:
         if text.startswith("```"):
             text = text.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
         data = json.loads(text)
-        queries = data.get("queries", [])
     except Exception:
         return [original_question]
 
-    if not isinstance(queries, list):
+    if not isinstance(data, dict):
         return [original_question]
 
     seen: set[str] = {original_question.strip().lower()}
     result: list[str] = []
-    for item in queries:
-        q = str(item).strip()
-        key = q.lower()
-        if not q or key in seen:
-            continue
-        seen.add(key)
-        result.append(q)
-        if len(result) == 3:
-            break
+
+    def _append_unique(items: object, *, limit: int) -> None:
+        if not isinstance(items, list):
+            return
+        for item in items:
+            if len(result) >= limit:
+                return
+            q = str(item).strip()
+            key = q.lower()
+            if not q or key in seen:
+                continue
+            seen.add(key)
+            result.append(q)
+
+    _append_unique(data.get("primary_queries"), limit=5)
+    _append_unique(data.get("fallback_queries"), limit=5)
+    if not result:
+        _append_unique(data.get("queries"), limit=3)
+
     return result or [original_question]
 
 
@@ -72,9 +94,15 @@ def _build_web_search_queries(state: AgentState, question: str) -> list[str]:
         return [question]
 
     history_block = _format_chat_history(state.get("chat_history"))
+    ui_language = str(state.get("ui_language", "")).strip()
     human_parts = [f"Original user question:\n{question}", f"Current retry count:\n{retries}"]
     if history_block:
         human_parts.insert(1, f"Recent conversation:\n{history_block}")
+    if ui_language:
+        human_parts.append(
+            "UI language preference (fallback hint only; prioritize question language):\n"
+            f"{ui_language}"
+        )
     prompt = "\n\n".join(human_parts)
 
     try:

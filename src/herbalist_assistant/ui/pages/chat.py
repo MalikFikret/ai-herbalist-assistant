@@ -190,6 +190,7 @@ def _generate_ai_response(user_input: str, profile: Dict[str, str]) -> tuple[str
                     "chat_history": chat_history,
                     "model_name": model_name,
                     "web_search_provider": web_search_provider,
+                    "ui_language": lang,
                 },
                 timeout_sec=_AGENT_TIMEOUT_SEC,
             )
@@ -246,28 +247,71 @@ def _render_chat_page() -> None:
         get_string(lang, "new_chat"),
     )
 
-    if logged_in:
-        _welcome_line = get_string(lang, "chat_welcome_user").format(
-            name=_html.escape(_welcome_display_name(st.session_state.get("username", "")))
+    has_user_msg = any(m["role"] == "user" for m in st.session_state.messages)
+
+    if not has_user_msg:
+        if logged_in:
+            _welcome_line = get_string(lang, "chat_welcome_user").format(
+                name=_html.escape(_welcome_display_name(st.session_state.get("username", "")))
+            )
+        else:
+            _welcome_line = "Welcome" if lang == "en" else "Hoş Geldiniz"
+
+        _subtitle = (
+            "Ask me about herbs, traditional remedies, and general wellness support."
+            if lang == "en"
+            else "Bana şifalı bitkiler, geleneksel tedaviler ve genel sağlık desteği hakkında sorular sorabilirsiniz."
         )
-    else:
-        _welcome_line = _html.escape(get_string(lang, "chat_welcome_guest"))
-    st.markdown(
-        f'<div class="ha-chat-welcome-line">{_welcome_line}</div>',
-        unsafe_allow_html=True,
-    )
-    if not logged_in:
+
+        if not logged_in:
+            banner_text = get_string(lang, "chat_guest_banner")
+            if isinstance(banner_text, str):
+                banner_text = banner_text.replace("Login", "<b>Login</b>")
+            st.markdown(
+                f'<div class="ha-chat-hero__guest-banner">ℹ️  {banner_text}</div>',
+                unsafe_allow_html=True,
+            )
+
         st.markdown(
-            f'<div class="ha-section-subtitle" style="margin-top:0.15rem;margin-bottom:0.65rem;">'
-            f'{get_string(lang, "chat_guest_banner")}</div>',
+            f"""
+            <div class="ha-chat-hero">
+                <div class="ha-chat-hero__logo">
+                    <svg viewBox="0 0 100 100" width="80" height="80" style="filter: drop-shadow(0px 4px 6px rgba(0,0,0,0.1));">
+                        <circle cx="50" cy="50" r="48" fill="url(#grad)" stroke="rgba(47, 79, 79, 0.1)" stroke-width="1.5"/>
+                        <defs>
+                            <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" style="stop-color:#FCFBFA;stop-opacity:1" />
+                                <stop offset="100%" style="stop-color:#E8E4DB;stop-opacity:1" />
+                            </linearGradient>
+                        </defs>
+                        <!-- Leaf V silhouette -->
+                        <path d="M 50 80 C 40 60, 25 45, 30 30 C 35 20, 45 25, 50 40 C 55 25, 65 20, 70 30 C 75 45, 60 60, 50 80 Z" fill="#2F4F4F" opacity="0.85"/>
+                        <path d="M 50 80 C 42 65, 30 55, 30 40 C 30 30, 40 30, 50 50" fill="none" stroke="#FAF9F6" stroke-width="1.5"/>
+                        <path d="M 50 80 C 58 65, 70 55, 70 40 C 70 30, 60 30, 50 50" fill="none" stroke="#FAF9F6" stroke-width="1.5"/>
+                        <path d="M 50 50 L 50 80" fill="none" stroke="#FAF9F6" stroke-width="2"/>
+                    </svg>
+                </div>
+                <h1 class="ha-chat-hero__title">{_welcome_line}</h1>
+                <p class="ha-chat-hero__subtitle">{_subtitle}</p>
+            </div>
+            """,
             unsafe_allow_html=True,
         )
-    st.markdown(
-        f'<div class="ha-section-title ha-chat-page-title">{_truncate_chat_title(active_chat_title, 80)}</div>',
-        unsafe_allow_html=True,
-    )
 
-    has_user_msg = any(m["role"] == "user" for m in st.session_state.messages)
+        prompt_options = get_string(lang, "suggested_prompts")
+        with st.container(key="ha_suggested_prompts"):
+            columns = st.columns(2, gap="small")
+            for i, question in enumerate(prompt_options):
+                with columns[i % 2]:
+                    if st.button(
+                        question,
+                        key=f"suggested_{i}",
+                        use_container_width=True,
+                        type="secondary",
+                    ):
+                        st.session_state.pending_prompt = question
+                        st.rerun()
+
 
     for idx, msg in enumerate(st.session_state.messages):
         if msg["role"] == "assistant":
@@ -290,8 +334,6 @@ def _render_chat_page() -> None:
     # Reserve space between messages and composer for ``st.status`` while the
     # agent runs (filled only when ``_agent_pending_question`` is set).
     _agent_thinking_slot = st.empty()
-    # Empty-state greeting sits above the gear + chat input.
-    _welcome_above_input = st.empty()
 
     with st.container(key="ha_chat_composer_row"):
         _gear_col, _chat_col = st.columns([1, 18], gap="small")
@@ -313,26 +355,6 @@ def _render_chat_page() -> None:
             )
     if not user_input and st.session_state.get("pending_prompt"):
         user_input = st.session_state.pop("pending_prompt")
-
-    if not has_user_msg and not user_input:
-        with _welcome_above_input.container():
-            with st.chat_message("assistant"):
-                st.markdown(get_string(lang, "bot_greeting"))
-
-            st.markdown(get_string(lang, "suggested_questions"))
-            prompt_options = get_string(lang, "suggested_prompts")
-            with st.container(key="ha_suggested_prompts"):
-                columns = st.columns(2, gap="small")
-                for i, question in enumerate(prompt_options):
-                    with columns[i % 2]:
-                        if st.button(
-                            question,
-                            key=f"suggested_{i}",
-                            use_container_width=True,
-                            type="secondary",
-                        ):
-                            st.session_state.pending_prompt = question
-                            st.rerun()
 
     # Run the agent after the composer exists so input + settings stay on-screen;
     # keep ``st.status`` in the slot above the composer.

@@ -10,6 +10,12 @@ from pathlib import Path
 import streamlit as st
 import streamlit.components.v1 as components
 
+try:
+    from herbalist_assistant.ui.botanical_assets import BOTANICAL_MAIN_B64, BOTANICAL_SIDEBAR_B64
+except ImportError:
+    BOTANICAL_MAIN_B64 = ""
+    BOTANICAL_SIDEBAR_B64 = ""
+
 # Login hero: bundled logo (replaces "Welcome" heading when present).
 _AUTH_LOGO_PATH = Path(__file__).resolve().parent / "static" / "herbalist_logo.png"
 # Login background: soft botanical scene shown only on guest Login page.
@@ -441,23 +447,24 @@ def _inject_global_styles() -> None:
         <style>
         @import url("https://fonts.googleapis.com/css2?family=Lora:wght@600;700&family=Inter:wght@400;500;600&display=swap");
         :root {
-            /* Soft, minimalist (ChatGPT-vari) palette: nötr beyaz/gri tonlar */
-            --ha-bg: #ffffff;
-            --ha-bg-2: #f7f7f8;
-            --ha-sidebar-bg: #f9f9f9;
-            --ha-text: #1f1f1f;
-            --ha-text-soft: #6b7280;
-            --ha-border: rgba(0, 0, 0, 0.08);
-            --ha-surface: #ffffff;
-            --ha-chat-ink: #1a1a1a;
-            /* Çok hafif sıcak vurgu (herbal kimliğe minik bir gönderme) */
-            --ha-accent-soft: #5b6e63;
-            --ha-shell-1: #ffffff;
-            --ha-shell-2: #ffffff;
-            --ha-shell-3: #ffffff;
-            --ha-shell-4: #ffffff;
-            --ha-card-edge: rgba(0, 0, 0, 0.06);
-            --ha-card-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+            /* Sophisticated Palette: Warm cream, deep forest green, and subtle gold accents */
+            --ha-bg: #FCFBFA; /* Warm Cream */
+            --ha-bg-2: #F6F4F0;
+            --ha-sidebar-bg: #F4F1EC;
+            --ha-text: #1C2D24;
+            --ha-text-soft: #3A4C41;
+            --ha-border: rgba(47, 79, 79, 0.12);
+            --ha-surface: #FCFBFA;
+            --ha-chat-ink: #1C2D24;
+            --ha-accent-soft: #2F4F4F; /* Deep Forest Green */
+            --ha-primary: #2F4F4F;
+            --ha-gold: #D4AF37;
+            --ha-shell-1: #FCFBFA;
+            --ha-shell-2: #F6F4F0;
+            --ha-shell-3: #F4F1EC;
+            --ha-shell-4: #E8E4DB;
+            --ha-card-edge: rgba(47, 79, 79, 0.08);
+            --ha-card-shadow: 0 4px 16px rgba(47, 79, 79, 0.04);
             --ha-btn-max-w: min(100%, 15rem);
             /* Noise dokusu sade görünüm için kapatıldı (boş url, opaklık 0) */
             --ha-noise-tile: none;
@@ -515,7 +522,7 @@ def _inject_global_styles() -> None:
             width: 100%;
             max-width: 1560px;
             padding-top: 0.35rem !important;
-            padding-bottom: 1.35rem !important;
+            padding-bottom: 5rem !important;
             position: relative;
             z-index: 1;
         }
@@ -1385,30 +1392,29 @@ def _inject_global_styles() -> None:
             width: auto !important;
             margin: 0 !important;
             padding: 0.85rem 0.85rem 0.85rem 0.85rem !important;
-            border-top: 1px solid var(--ha-border) !important;
-            background: var(--ha-sidebar-bg) !important;
-            z-index: 5 !important;
         }
         .st-key-ha_sidebar_login_row {
             width: 100% !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            border: none !important;
+            margin: 0 0 1rem 0 !important;
+            padding: 0.85rem !important;
+            border: 1px solid var(--ha-border) !important;
+            background: var(--ha-shell-2) !important;
+            border-radius: 12px !important;
         }
         /* Login kartı: başlık + açıklama (sade, kutusuz) */
         .ha-sidebar-login-card {
-            margin: 0 0 0.55rem 0 !important;
+            margin: 0 0 0.75rem 0 !important;
             padding: 0 !important;
             background: transparent !important;
             border: none !important;
             box-shadow: none !important;
         }
         .ha-sidebar-login-title {
-            margin: 0 0 0.22rem 0 !important;
+            margin: 0 0 0.35rem 0 !important;
             padding: 0 !important;
             font-family: "Inter", system-ui, -apple-system, sans-serif !important;
-            font-size: 0.78rem !important;
-            font-weight: 600 !important;
+            font-size: 0.82rem !important;
+            font-weight: 650 !important;
             line-height: 1.3 !important;
             color: var(--ha-text) !important;
             -webkit-text-fill-color: var(--ha-text) !important;
@@ -1418,14 +1424,24 @@ def _inject_global_styles() -> None:
             margin: 0 !important;
             padding: 0 !important;
             font-family: "Inter", system-ui, -apple-system, sans-serif !important;
-            font-size: 0.72rem !important;
+            font-size: 0.75rem !important;
             font-weight: 400 !important;
             line-height: 1.4 !important;
             color: var(--ha-text-soft) !important;
             -webkit-text-fill-color: var(--ha-text-soft) !important;
-            background: transparent !important;
+        }
+        /* Style the login button inside the row */
+        .st-key-ha_sidebar_login_row button {
+            background: var(--ha-primary) !important;
+            color: var(--ha-bg) !important;
+            -webkit-text-fill-color: var(--ha-bg) !important;
             border: none !important;
-            border-radius: 0 !important;
+            border-radius: 8px !important;
+            font-weight: 600 !important;
+            width: 100% !important;
+        }
+        .st-key-ha_sidebar_login_row button:hover {
+            opacity: 0.9 !important;
         }
         /* Premium header: nav label + user card */
         [data-testid="stSidebar"] [data-testid="stMarkdownContainer"]:has(.ha-sidebar-header) {
@@ -1468,29 +1484,28 @@ def _inject_global_styles() -> None:
         .ha-sidebar-header__user-card {
             display: flex;
             align-items: center;
-            gap: 0.55rem;
-            padding: 0.5rem 0.65rem;
-            background: #ffffff;
-            border: 1px solid var(--ha-border);
+            gap: 0.75rem;
+            padding: 0.75rem 0.85rem;
+            background: var(--ha-shell-2);
+            border: 1px solid rgba(47, 79, 79, 0.15);
             border-radius: 12px;
-            box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+            box-shadow: 0 4px 12px rgba(47, 79, 79, 0.05);
+            position: relative;
+            overflow: hidden;
         }
         .ha-sidebar-header__avatar {
-            width: 2.1rem;
-            height: 2.1rem;
-            border-radius: 10px;
+            width: 2.6rem;
+            height: 2.6rem;
+            border-radius: 50%;
             flex-shrink: 0;
             display: flex !important;
             align-items: center;
             justify-content: center;
-            font-family: "Inter", system-ui, sans-serif !important;
-            font-size: 0.95rem !important;
-            font-weight: 700 !important;
-            line-height: 1 !important;
-            color: #ffffff !important;
-            -webkit-text-fill-color: #ffffff !important;
-            background: linear-gradient(145deg, #4a4a4a 0%, #1f1f1f 92%);
-            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+            background: linear-gradient(145deg, #a49f8e 0%, #767364 100%);
+            color: #FAF9F6 !important;
+            box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.3), 0 2px 4px rgba(0, 0, 0, 0.1);
+            position: relative;
+            z-index: 2;
         }
         .ha-sidebar-header__user-meta {
             min-width: 0;
@@ -1641,23 +1656,66 @@ def _inject_global_styles() -> None:
             text-overflow: ellipsis;
             box-shadow: none;
         }
+        /* Professional Sidebar Navigation Menu Styling */
+        [data-testid="stSidebar"] div[role="radiogroup"] {
+            display: flex !important;
+            flex-direction: row !important;
+            gap: 0.25rem !important;
+            background: rgba(0, 0, 0, 0.03);
+            border-radius: 12px;
+            padding: 0.25rem !important;
+        }
         [data-testid="stSidebar"] div[role="radiogroup"] label {
-            border-radius: 9px;
-            padding: 0.34rem 0.55rem;
-            margin-bottom: 0.08rem;
-            transition: background-color 0.15s ease;
+            width: 50% !important;
+            border-radius: 8px !important;
+            padding: 0.5rem 0.2rem !important;
+            margin: 0 !important;
+            transition: all 0.2s ease !important;
             font-size: 0.9rem !important;
+            font-weight: 500 !important;
+            color: #4a5568 !important;
+            background: transparent !important;
+            cursor: pointer !important;
+            border: none !important;
+            text-align: center;
         }
         [data-testid="stSidebar"] div[role="radiogroup"] label:hover {
-            background: rgba(0, 0, 0, 0.04);
+            background: rgba(0, 0, 0, 0.04) !important;
+            color: #1a202c !important;
         }
         [data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) {
-            background: rgba(0, 0, 0, 0.06);
-            border: 1px solid transparent !important;
+            background: #DCE5DE !important; /* Soft green pill for active item */
+            color: #2b4535 !important;
             font-weight: 600 !important;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
         }
+        [data-testid="stSidebar"] div[role="radiogroup"] label p {
+            width: 100% !important;
+            margin: 0 !important;
+            text-align: center !important;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.2rem;
+            white-space: nowrap !important;
+        }
+        /* Add elegant icons via CSS */
+        [data-testid="stSidebar"] div[role="radiogroup"] label:first-child p::before {
+            content: "💬";
+            font-size: 1.1rem;
+            filter: grayscale(1) opacity(0.7);
+        }
+        [data-testid="stSidebar"] div[role="radiogroup"] label:last-child p::before {
+            content: "👤";
+            font-size: 1.1rem;
+            filter: grayscale(1) opacity(0.7);
+        }
+        [data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) p::before {
+            filter: grayscale(1) opacity(1);
+        }
+        /* Hide the actual radio button circle */
         [data-testid="stSidebar"] div[role="radiogroup"] label > div:first-child {
-            display: none;
+            display: none !important;
         }
         /* ====== ChatGPT tarzı sabit chat düzeni ======
            - body/html: 100vh, overflow hidden (sayfa scroll kapalı)
@@ -1724,7 +1782,7 @@ def _inject_global_styles() -> None:
            CSS değişkenlerini günceller. Değişkenler yoksa viewport tamamına yayılır. */
         .st-key-ha_chat_composer_row {
             position: fixed !important;
-            bottom: 0 !important;
+            bottom: 1rem !important;
             top: auto !important;
             left: var(--ha-main-left, 0) !important;
             right: auto !important;
@@ -1750,62 +1808,139 @@ def _inject_global_styles() -> None:
             border: none !important;
             box-shadow: none !important;
         }
+        /* THE UNIFIED PILL CONTAINER */
         .st-key-ha_chat_composer_row [data-testid="stHorizontalBlock"] {
             pointer-events: auto;
             max-width: 48rem !important;
             margin-left: auto !important;
             margin-right: auto !important;
             margin-bottom: max(0.6rem, env(safe-area-inset-bottom, 0px)) !important;
-            padding: 0.5rem 0.65rem !important;
-            background: #ffffff !important;
-            border: 1px solid var(--ha-card-edge) !important;
-            border-radius: 14px !important;
-            box-shadow:
-                0 -4px 14px rgba(40, 55, 45, 0.06),
-                var(--ha-card-shadow) !important;
+            padding: 0.1rem 0.5rem !important;
+            height: 54px !important;
+            max-height: 54px !important;
+            /* Give it the unified pill look */
+            background: #f0f4f1 !important;
+            border: 1px solid rgba(0, 0, 0, 0.05) !important;
+            border-radius: 32px !important;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04) !important;
+            align-items: center !important;
+            gap: 0 !important; /* No gap so it feels like one unit */
         }
         @media (max-width: 720px) {
             .st-key-ha_chat_composer_row [data-testid="stHorizontalBlock"] {
                 margin-left: 0.5rem !important;
                 margin-right: 0.5rem !important;
-                margin-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px)) !important;
             }
         }
-        .st-key-ha_chat_composer_row [data-testid="stHorizontalBlock"] {
-            align-items: flex-end !important;
-            gap: 0.35rem !important;
-        }
+        
+        /* THE GEAR BUTTON (LEFT) */
         .st-key-ha_chat_composer_row [data-testid="stHorizontalBlock"] > div[data-testid="column"]:first-child {
-            flex: 0 0 2.5rem !important;
-            width: 2.5rem !important;
-            min-width: 2.5rem !important;
-            max-width: 2.5rem !important;
+            flex: 0 0 3rem !important;
+            width: 3rem !important;
+            min-width: 3rem !important;
+            max-width: 3rem !important;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         .st-key-ha_chat_composer_row [data-testid="stPopover"] button {
-            min-height: 2.35rem !important;
-            width: 100% !important;
-            max-width: none !important;
-            padding: 0.15rem !important;
-            border-radius: 11px !important;
-            border: 1px solid rgba(72, 92, 78, 0.2) !important;
-            background: #ffffff !important;
-            color: #4d564e !important;
-            -webkit-text-fill-color: #4d564e !important;
-            box-shadow: 0 1px 2px rgba(40, 55, 45, 0.05) !important;
+            height: 2.8rem !important;
+            width: 2.8rem !important;
+            padding: 0 !important;
+            border-radius: 50% !important;
+            /* Strip out all borders and backgrounds to blend into the pill */
+            border: none !important;
+            background: transparent !important;
+            color: #5b6e63 !important;
+            box-shadow: none !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
         }
         .st-key-ha_chat_composer_row [data-testid="stPopover"] button:hover {
-            background: #f9fbf9 !important;
-            border-color: rgba(72, 92, 78, 0.28) !important;
+            background: rgba(91, 110, 99, 0.08) !important;
             color: #3d433d !important;
         }
-        .st-key-ha_chat_composer_row [data-testid="stPopover"] button [data-testid="stMarkdownContainer"] {
+        /* Hide the figure space and chevron */
+        .st-key-ha_chat_composer_row [data-testid="stPopover"] button [data-testid="stMarkdownContainer"],
+        .st-key-ha_chat_composer_row [data-testid="stPopover"] button svg:not([data-testid="stIconMaterial"]) {
             display: none !important;
         }
+        .st-key-ha_chat_composer_row [data-testid="stPopover"] button [data-testid="stIconMaterial"] {
+            margin: 0 !important;
+            font-size: 1.4rem !important;
+        }
+
+        /* THE CHAT INPUT (RIGHT) */
+        /* Make chat input outer wrapper transparent */
         .st-key-ha_chat_composer_row [data-testid="stChatInput"] > div {
-            border-radius: 14px !important;
-            border-color: var(--ha-border) !important;
-            background: var(--ha-surface) !important;
-            box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04) !important;
+            border: none !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+        }
+        /* Make inner wrappers transparent too, so the pill background shows through */
+        .st-key-ha_chat_composer_row [data-testid="stChatInput"] * {
+            background: transparent !important;
+            border-color: transparent !important;
+            box-shadow: none !important;
+        }
+        /* Except keep the send button hover effect if possible, or just let it be */
+        .st-key-ha_chat_composer_row [data-testid="stChatInput"] button {
+            background: #5b6e63 !important;
+            color: white !important;
+            border-radius: 50% !important;
+            height: 2.4rem !important;
+            width: 2.4rem !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            margin-right: 0.2rem !important;
+            margin-bottom: 0.2rem !important;
+        }
+        .st-key-ha_chat_composer_row [data-testid="stChatInput"] button:disabled {
+            background: rgba(91, 110, 99, 0.2) !important;
+            color: rgba(255, 255, 255, 0.6) !important;
+        }
+        .st-key-ha_chat_composer_row [data-testid="stChatInput"] > div::before {
+            content: "";
+            background-image: url('data:image/svg+xml;utf8,<svg viewBox="0 0 24 24" fill="none" stroke="%233A4C41" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>');
+            width: 1.4rem;
+            height: 1.4rem;
+            display: block;
+            margin-left: 0.5rem;
+            margin-top: 0.45rem;
+            opacity: 0.7;
+        }
+        .st-key-ha_chat_composer_row [data-testid="stChatInput"] textarea {
+            color: #1f1f1f !important;
+            padding-left: 2.5rem !important;
+            padding-right: 0.5rem !important;
+        }
+        /* Suggested Prompts Styling */
+        .st-key-ha_suggested_prompts {
+            margin-top: 1rem;
+            margin-bottom: 2rem;
+        }
+        .st-key-ha_suggested_prompts [data-testid="baseButton-secondary"] {
+            background: #ffffff !important;
+            border: 1px solid rgba(47, 79, 79, 0.1) !important;
+            border-radius: 12px !important;
+            padding: 0.75rem 1rem !important;
+            color: var(--ha-primary) !important;
+            font-weight: 500 !important;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.02) !important;
+            transition: all 0.2s ease !important;
+            height: auto !important;
+            text-align: left !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: flex-start !important;
+        }
+        .st-key-ha_suggested_prompts [data-testid="baseButton-secondary"]:hover {
+            border-color: rgba(47, 79, 79, 0.3) !important;
+            box-shadow: 0 6px 12px rgba(47, 79, 79, 0.06) !important;
+            transform: translateY(-2px) !important;
         }
         /* Chat bubbles: ChatGPT tarzı sade — asistan baloncuğu çerçevesiz,
            kullanıcı baloncuğu hafif gri pill. */
@@ -2324,11 +2459,361 @@ def _inject_global_styles() -> None:
         .st-key-ha_auth_shell [data-testid="stMarkdownContainer"] .ha-lux-form-sub {
             color: inherit;
         }
+
+        /* Welcome Hero: ChatGPT/Gemini style empty state */
+        .ha-chat-hero {
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            justify-content: center !important;
+            text-align: center !important;
+            padding: 1rem 1.5rem 0.5rem 1.5rem !important;
+            margin-top: 0 !important;
+            margin-bottom: 0.5rem !important;
+            max-width: 48rem !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+            background: transparent !important;
+        }
+        .ha-chat-hero__icon {
+            font-size: 2.2rem !important;
+            margin-bottom: 0.6rem !important;
+            animation: float-soft 3s ease-in-out infinite alternate !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            width: 56px !important;
+            height: 56px !important;
+            border-radius: 50% !important;
+            background: rgba(91, 110, 99, 0.08) !important;
+            color: var(--ha-accent-soft, #5b6e63) !important;
+            box-shadow: 0 4px 12px rgba(91, 110, 99, 0.05) !important;
+            border: 1px solid rgba(91, 110, 99, 0.12) !important;
+        }
+        .ha-chat-hero__title {
+            font-family: "Lora", Georgia, "Times New Roman", serif !important;
+            font-size: clamp(1.6rem, 3.5vw, 2.2rem) !important;
+            font-weight: 700 !important;
+            color: var(--ha-text, #1f1f1f) !important;
+            margin: 0 0 0.4rem 0 !important;
+            line-height: 1.2 !important;
+            letter-spacing: -0.02em !important;
+        }
+        .ha-chat-hero__subtitle {
+            font-family: "Inter", system-ui, -apple-system, sans-serif !important;
+            font-size: 1rem !important;
+            line-height: 1.45 !important;
+            color: var(--ha-text-soft, #6b7280) !important;
+            max-width: 42ch !important;
+            margin: 0 auto !important;
+        }
+        .ha-chat-hero__guest-banner {
+            font-family: "Inter", system-ui, -apple-system, sans-serif !important;
+            font-size: 0.88rem !important;
+            font-weight: 500 !important;
+            line-height: 1.45 !important;
+            color: #2F4F4F !important;
+            background: #FCFBFA !important;
+            border: 1px solid rgba(47, 79, 79, 0.15) !important;
+            border-radius: 12px !important;
+            padding: 0.6rem 1.2rem !important;
+            margin: 0.2rem auto 0.8rem auto !important;
+            max-width: 48rem !important;
+            text-align: center !important;
+            display: block !important;
+            box-shadow: 0 2px 8px rgba(47, 79, 79, 0.05) !important;
+        }
+        @keyframes float-soft {
+            0% { transform: translateY(0px); }
+            100% { transform: translateY(-4px); }
+        }
         </style>
         """,
         unsafe_allow_html=True,
     )
+    
+    if BOTANICAL_MAIN_B64 or BOTANICAL_SIDEBAR_B64:
+        st.markdown(
+            f"""
+            <style>
+            [data-testid="stAppViewContainer"] {{
+                background-image: url("{BOTANICAL_MAIN_B64}") !important;
+                background-size: cover !important;
+                background-position: center !important;
+                background-repeat: no-repeat !important;
+                background-blend-mode: multiply;
+            }}
+            .ha-sidebar-header__user-card {{
+                background-image: url("{BOTANICAL_SIDEBAR_B64}") !important;
+                background-size: cover !important;
+                background-position: center center !important;
+                background-repeat: no-repeat !important;
+                border-radius: 12px !important;
+            }}
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
 
+    st.markdown(
+        """
+        <style>
+        /* Global Typography & Theming */
+        .ha-chat-hero__title {
+            font-family: "Playfair Display", "Merriweather", "Lora", serif !important;
+            color: #2F4F4F !important;
+            font-weight: 700 !important;
+            font-size: 2.2rem !important;
+        }
+
+        /* Sidebar - Navigation Tabs */
+        [data-testid="stSidebar"] div[role="radiogroup"] {
+            display: flex !important;
+            flex-direction: row !important;
+            gap: 0 !important;
+        }
+        [data-testid="stSidebar"] div[role="radiogroup"] label {
+            flex: 1 !important;
+            border-radius: 0 !important;
+            background: transparent !important;
+            border-bottom: 3px solid transparent !important;
+            justify-content: center !important;
+            padding: 0.5rem 0 !important;
+            margin: 0 !important;
+            border-radius: 8px 8px 0 0 !important;
+        }
+        [data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) {
+            background: #e9f2ea !important;
+            border-bottom: 4px solid #2F4F4F !important;
+            box-shadow: none !important;
+        }
+        [data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) p,
+        [data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) span {
+            color: #2F4F4F !important;
+            -webkit-text-fill-color: #2F4F4F !important;
+            font-weight: 700 !important;
+        }
+        [data-testid="stSidebar"] div[role="radiogroup"] label p {
+            justify-content: center !important;
+            width: 100% !important;
+        }
+
+        /* Sidebar - Action Card ("Get tailored herbal recommendations") */
+        .st-key-ha_sidebar_login_row {
+            border: 2px solid #2F4F4F !important;
+            border-radius: 12px !important;
+        }
+        .st-key-ha_sidebar_login_row button,
+        [data-testid="stSidebar"] .st-key-ha_sidebar_login_row button,
+        [data-testid="stSidebar"] [data-testid="stVerticalBlock"] .st-key-ha_sidebar_login_row button[kind="primary"],
+        [data-testid="stSidebar"] [data-testid="stVerticalBlock"] .st-key-ha_sidebar_login_row button[kind="secondary"] {
+            background-color: #2F4F4F !important;
+            background-image: none !important;
+            color: white !important;
+            -webkit-text-fill-color: white !important;
+            border-radius: 25px !important;
+            padding: 10px 20px !important;
+            width: 100% !important;
+            display: block !important;
+            border: none !important;
+            box-shadow: none !important;
+        }
+        .st-key-ha_sidebar_login_row button *,
+        [data-testid="stSidebar"] .st-key-ha_sidebar_login_row button p,
+        [data-testid="stSidebar"] .st-key-ha_sidebar_login_row button span {
+            color: white !important;
+            -webkit-text-fill-color: white !important;
+            font-weight: 700 !important;
+        }
+
+        /* Header Deploy Link/Button */
+        [data-testid="stAppDeployButton"],
+        [data-testid="stAppDeployButton"] button,
+        .stDeployButton,
+        [data-testid="stHeader"] .stDeployButton button {
+            background-color: #2F4F4F !important;
+            color: white !important;
+            border-radius: 20px !important;
+            padding: 0.4rem 1rem !important;
+            border: none !important;
+            font-weight: 600 !important;
+        }
+        [data-testid="stAppDeployButton"] *,
+        .stDeployButton * {
+            color: white !important;
+            -webkit-text-fill-color: white !important;
+        }
+
+        /* Sidebar - User Profile Card */
+        .ha-sidebar-header__user-card {
+            background-color: #f5eedc !important;
+            border-radius: 16px !important;
+        }
+
+        /* Main Chat Area - Info Alert Message */
+        .ha-chat-hero__guest-banner {
+            background-color: #e3ece5 !important;
+            border-radius: 8px !important;
+            padding: 0.8rem 1rem !important;
+            margin: 0 auto 1.5rem auto !important;
+            max-width: 800px !important;
+            text-align: center !important;
+            color: #2F4F4F !important;
+            font-weight: 500 !important;
+        }
+        .ha-chat-hero__guest-banner b, 
+        .ha-chat-hero__guest-banner strong {
+            font-weight: 800 !important;
+            color: #1a2e2e !important;
+        }
+
+        /* Main Chat Area - Suggestion Buttons */
+        [data-testid="stVerticalBlock"] [data-testid="stHorizontalBlock"] button[kind="secondary"],
+        .st-key-ha_suggested_prompts button[kind="secondary"] {
+            background: #f5eedc !important;
+            border: 1px solid #2F4F4F !important;
+            border-radius: 12px !important;
+            min-height: 4.5rem !important;
+            height: auto !important;
+            padding: 0.8rem 1rem !important;
+            white-space: normal !important;
+            line-height: 1.4 !important;
+        }
+        [data-testid="stVerticalBlock"] [data-testid="stHorizontalBlock"] button[kind="secondary"] p,
+        [data-testid="stVerticalBlock"] [data-testid="stHorizontalBlock"] button[kind="secondary"] span,
+        .st-key-ha_suggested_prompts button[kind="secondary"] p,
+        .st-key-ha_suggested_prompts button[kind="secondary"] span {
+            color: #1C2D24 !important;
+            -webkit-text-fill-color: #1C2D24 !important;
+            font-weight: 600 !important;
+        }
+
+        /* Chat Input Area */
+        [data-testid="stChatInput"] > div {
+            background: #f4f5f4 !important;
+            border-radius: 20px !important;
+            border: 1px solid #dcdcdc !important;
+            position: relative !important;
+        }
+        [data-testid="stChatInput"] textarea {
+            padding-right: 3.5rem !important;
+        }
+        /* Send Button */
+        [data-testid="stChatInputSubmitButton"],
+        [data-testid="stChatInput"] button {
+            background-color: #2F4F4F !important;
+            color: white !important;
+            border-radius: 50% !important;
+            width: 36px !important;
+            height: 36px !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            border: none !important;
+        }
+        [data-testid="stChatInputSubmitButton"] svg,
+        [data-testid="stChatInput"] button svg {
+            fill: white !important;
+            color: white !important;
+        }
+        /* Paperclip icon before input */
+        [data-testid="stChatInput"] > div::before {
+            content: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="%232F4F4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>');
+            position: absolute !important;
+            right: 56px !important;
+            top: 50% !important;
+            transform: translateY(-50%) !important;
+            pointer-events: none !important;
+            z-index: 2 !important;
+        }
+        
+        /* Navigation Tabs ("Chat" & "Profile") */
+        /* Hide the default circular indicators SAFELY without hiding text */
+        .st-key-ha_nav_user div[role="radiogroup"] label > div:first-child,
+        .st-key-ha_nav_guest_top div[role="radiogroup"] label > div:first-child,
+        .st-key-ha_nav_admin div[role="radiogroup"] label > div:first-child { 
+            display: none !important; 
+        }
+
+        .st-key-ha_nav_user div[role="radiogroup"],
+        .st-key-ha_nav_guest_top div[role="radiogroup"],
+        .st-key-ha_nav_admin div[role="radiogroup"] { 
+            width: 100% !important;
+            gap: 0 !important; 
+        }
+
+        .st-key-ha_nav_user div[role="radiogroup"] label,
+        .st-key-ha_nav_guest_top div[role="radiogroup"] label,
+        .st-key-ha_nav_admin div[role="radiogroup"] label {
+            flex: 1 !important;
+            width: 100% !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: center !important;
+            align-items: center !important;
+            padding: 12px 0 !important;
+            margin: 0 !important;
+            border-radius: 8px 8px 0 0 !important;
+            background-color: transparent !important;
+            border-bottom: 4px solid #E3DBCB !important;
+            color: #6B705C !important;
+            cursor: pointer !important;
+        }
+
+        /* Ensure Text Visibility */
+        .st-key-ha_nav_user div[role="radiogroup"] label > div:nth-child(2),
+        .st-key-ha_nav_guest_top div[role="radiogroup"] label > div:nth-child(2),
+        .st-key-ha_nav_admin div[role="radiogroup"] label > div:nth-child(2),
+        .st-key-ha_nav_user div[role="radiogroup"] label p,
+        .st-key-ha_nav_guest_top div[role="radiogroup"] label p,
+        .st-key-ha_nav_admin div[role="radiogroup"] label p { 
+            display: block !important; 
+            visibility: visible !important; 
+            margin-top: 5px !important; 
+        }
+
+        .st-key-ha_nav_user div[role="radiogroup"] label:has(input:checked),
+        .st-key-ha_nav_guest_top div[role="radiogroup"] label:has(input:checked),
+        .st-key-ha_nav_admin div[role="radiogroup"] label:has(input:checked) {
+            background-color: #E6ECE5 !important;
+            border-bottom: 4px solid #2F4F4F !important;
+            color: #2F4F4F !important;
+            font-weight: bold !important;
+        }
+
+        /* First Tab (Chat) */
+        .st-key-ha_nav_user div[role="radiogroup"] label:nth-child(1)::before,
+        .st-key-ha_nav_guest_top div[role="radiogroup"] label:nth-child(1)::before,
+        .st-key-ha_nav_admin div[role="radiogroup"] label:nth-child(1)::before {
+            content: "";
+            display: block;
+            width: 24px;
+            height: 24px;
+            margin-bottom: 5px;
+            background-repeat: no-repeat !important;
+            background-position: center !important;
+            background-size: contain !important;
+            background-image: url("data:image/svg+xml,%3C%3Fxml version='1.0' encoding='utf-8'%3F%3E%3C!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools --%3E%3Csvg width='800px' height='800px' viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M16 2H8C4 2 2 4 2 8V21C2 21.55 2.45 22 3 22H16C20 22 22 20 22 16V8C22 4 20 2 16 2Z' stroke='%23292D32' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M7 9.5H17' stroke='%23292D32' stroke-width='1.5' stroke-miterlimit='10' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M7 14.5H14' stroke='%23292D32' stroke-width='1.5' stroke-miterlimit='10' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+        }
+
+        /* Second Tab (Profile) */
+        .st-key-ha_nav_user div[role="radiogroup"] label:nth-child(2)::before,
+        .st-key-ha_nav_guest_top div[role="radiogroup"] label:nth-child(2)::before,
+        .st-key-ha_nav_admin div[role="radiogroup"] label:nth-child(2)::before {
+            content: "";
+            display: block;
+            width: 24px;
+            height: 24px;
+            margin-bottom: 5px;
+            background-repeat: no-repeat !important;
+            background-position: center !important;
+            background-size: contain !important;
+            background-image: url("data:image/svg+xml,%3C%3Fxml version='1.0' encoding='utf-8'%3F%3E%3C!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools --%3E%3Csvg width='800px' height='800px' viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M12.12 12.78C12.05 12.77 11.96 12.77 11.88 12.78C10.12 12.72 8.71997 11.28 8.71997 9.50998C8.71997 7.69998 10.18 6.22998 12 6.22998C13.81 6.22998 15.28 7.69998 15.28 9.50998C15.27 11.28 13.88 12.72 12.12 12.78Z' stroke='%23292D32' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M18.74 19.3801C16.96 21.0101 14.6 22.0001 12 22.0001C9.40001 22.0001 7.04001 21.0101 5.26001 19.3801C5.36001 18.4401 5.96001 17.5201 7.03001 16.8001C9.77001 14.9801 14.25 14.9801 16.97 16.8001C18.04 17.5201 18.64 18.4401 18.74 19.3801Z' stroke='%23292D32' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z' stroke='%23292D32' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 def _inject_chat_layout_script() -> None:
     """Sidebar açıkken/kapalıyken composer'ın stMain ile hizalı kalması için
     iki CSS değişkenini günceller: --ha-main-left, --ha-main-width.

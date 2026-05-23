@@ -16,6 +16,7 @@ Usage:
 
 from __future__ import annotations
 
+import argparse
 import os
 import asyncio
 import csv
@@ -49,7 +50,7 @@ from herbalist_assistant.llm.groq import get_groq_api_key  # noqa: E402
 # ---------------------------------------------------------------------------
 DATASET_PATH = _REPO_ROOT / "eval_dataset.json"
 REPORTS_DIR = _REPO_ROOT / "evaluation_reports"
-JUDGE_MODEL = "gemini-1.5-flash"
+JUDGE_MODEL = "gemini-1.5-flash-latest"
 # Per-invocation timeout in seconds for the graph and judge calls.
 GRAPH_TIMEOUT_SECONDS = 180
 JUDGE_TIMEOUT_SECONDS = 60
@@ -268,6 +269,7 @@ def _export_csv(results: list[dict[str, Any]], path: Path) -> None:
         "accuracy_score",
         "hallucination_score",
         "answer_relevance_score",
+        "document_grade_score",
         "topic",
         "question",
         "ideal_answer",
@@ -285,27 +287,31 @@ def _export_csv(results: list[dict[str, Any]], path: Path) -> None:
 # Main evaluation loop
 # ---------------------------------------------------------------------------
 
-async def main() -> None:
+async def main(target_lang: str) -> None:
     start_time = time.time()
 
     # Create the reports directory if it doesn't exist.
     REPORTS_DIR.mkdir(exist_ok=True)
 
-    # Generate a timestamped output filename.
+    # Generate a timestamped output filename including the language
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_csv_path = REPORTS_DIR / f"results_{timestamp}.csv"
+    output_csv_path = REPORTS_DIR / f"results_{target_lang}_{timestamp}.csv"
 
-    dataset = _load_dataset(DATASET_PATH)
+    # Select the dataset dynamically based on the requested language
+    dataset_name = f"eval_dataset_{target_lang}.json"
+    dataset_path = _REPO_ROOT / dataset_name
+    
+    dataset = _load_dataset(dataset_path)
     judge = _create_judge_llm()
 
     all_results: list[dict[str, Any]] = []
     total = len(dataset)
-    _logger.info("Starting evaluation: %d test cases", total)
+    _logger.info("Starting %s evaluation: %d test cases", target_lang.upper(), total)
 
     for idx, entry in enumerate(dataset, start=1):
         qid = entry["id"]
         topic = entry.get("topic", "unknown")
-        lang = entry.get("language", "unknown")
+        lang = entry.get("language", target_lang)
         question_text = entry["question"]
         ideal_answer = entry["ideal_answer"]
 
@@ -320,11 +326,17 @@ async def main() -> None:
         hallucination = str(state.get("hallucination_score", "N/A"))
         relevance = str(state.get("answer_relevance_score", "N/A"))
 
+        # ------------------------------------------------------------
+        selected_docs = state.get("selected_docs", [])
+        document_grade_score = "yes" if isinstance(selected_docs, list) and len(selected_docs) > 0 else "no"
+        # ------------------------------------------------------------
+
         _logger.info(
-            "   latency=%.2fs  hallucination=%s  relevance=%s  answer_len=%d",
+            "   latency=%.2fs  hallucination=%s  relevance=%s  docs_passed=%s  answer_len=%d",
             latency_seconds,
             hallucination,
             relevance,
+            document_grade_score,
             len(generated_answer),
         )
 
@@ -360,6 +372,7 @@ async def main() -> None:
                 "latency_seconds": latency_seconds,
                 "hallucination_score": hallucination,
                 "answer_relevance_score": relevance,
+                "document_grade_score": document_grade_score,
                 "accuracy_score": accuracy_score,
                 "accuracy_explanation": accuracy_explanation,
             }
@@ -373,7 +386,7 @@ async def main() -> None:
 
     print("\n")
     print("=" * 60)
-    print("  AI HERBALIST ASSISTANT — RAG EVALUATION REPORT")
+    print(f"  AI HERBALIST ASSISTANT — {target_lang.upper()} EVALUATION REPORT")
     print(f"  Test cases: {total}  |  Elapsed: {elapsed:.1f}s")
     print(f"  Judge model: {JUDGE_MODEL}")
     print("=" * 60)
@@ -388,4 +401,14 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = argparse.ArgumentParser(description="Run AI Herbalist Assistant Evaluation.")
+    parser.add_argument(
+        "--lang",
+        type=str,
+        choices=["en", "tr"],
+        required=True,
+        help="Specify the target language for evaluation (e.g., 'en' for English, 'tr' for Turkish)."
+    )
+    args = parser.parse_args()
+    
+    asyncio.run(main(args.lang))

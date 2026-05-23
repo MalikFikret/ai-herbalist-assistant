@@ -214,16 +214,33 @@ _COOKIE_MGR_SESSION_KEY = "_ha_cookie_mgr"
 
 
 def _initialize_cookie_manager() -> None:
-    """Instantiate the CookieManager once per Streamlit script run.
+    """Instantiate the CookieManager only when needed.
 
-    ``CookieManager(key="ha_cookies")`` registers a Streamlit component; calling
-    it more than once in the same script run raises ``StreamlitDuplicateElementKey``.
-    We call this helper exactly once at the top of :func:`run` and then read the
-    cached instance via :func:`_get_cookie_manager` from anywhere else.
+    To prevent infinite iframe mounts and WebSocket reruns during an active
+    session, we skip rendering the iframe if:
+    1. The user is logged in AND we don't have a pending logout/cookie action.
+    2. We have already checked the remember cookie on startup (consumed = True)
+       AND the current page is not 'Login' (where we might need to set/clear cookies).
     """
     if not _COOKIES_AVAILABLE:
         st.session_state[_COOKIE_MGR_SESSION_KEY] = None
         return
+
+    # Check if we actually need the cookie manager
+    logged_in = st.session_state.get("is_logged_in", False)
+    remember_consumed = st.session_state.get("ha_remember_consumed", False)
+    active_page = st.session_state.get("active_page", "Chat")
+
+    # We need it if:
+    # - We haven't checked the remember cookie yet on startup (auto-login phase)
+    # - OR the user is on the Login page (where they might check "Remember me")
+    # - OR the user clicked logout (which will trigger cookie deletion)
+    needs_cookies = (not logged_in and not remember_consumed) or (active_page == "Login") or st.session_state.get("ha_logging_out", False)
+
+    if not needs_cookies:
+        st.session_state[_COOKIE_MGR_SESSION_KEY] = None
+        return
+
     try:
         st.session_state[_COOKIE_MGR_SESSION_KEY] = _stx.CookieManager(
             key="ha_cookies"

@@ -78,6 +78,7 @@ from .auth import (  # noqa: E402, F811
     _verify_password,
 )
 from .components import (  # noqa: E402, F811
+    _extract_blocked_herbs,
     _normalize_sources,
     _render_advanced_settings_widgets,
     _render_assistant_action_row,
@@ -134,6 +135,7 @@ def run() -> None:
                     format_func=lambda s: _section_nav_label(lang, s),
                     label_visibility="collapsed",
                     key="ha_nav_admin",
+                    horizontal=True,
                 )
                 st.session_state.active_page = selected_section
             elif st.session_state.is_logged_in:
@@ -146,6 +148,7 @@ def run() -> None:
                     format_func=lambda s: _section_nav_label(lang, s),
                     label_visibility="collapsed",
                     key="ha_nav_user",
+                    horizontal=True,
                 )
                 st.session_state.active_page = selected_section
                 if st.button(
@@ -229,6 +232,7 @@ def run() -> None:
                     label_visibility="collapsed",
                     key="ha_nav_guest_top",
                     on_change=_on_guest_top_nav,
+                    horizontal=True,
                 )
 
             st.divider()

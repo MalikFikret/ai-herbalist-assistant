@@ -1,0 +1,37 @@
+[
+    {
+        "id": "q1_en",
+        "topic": "mild headache",
+        "language": "en",
+        "question": "What is a good herbal remedy for a mild headache?",
+        "ideal_answer": "Peppermint oil applied to the temples can relieve tension headaches, and chamomile tea has calming, anti-inflammatory properties that may ease headache pain. Feverfew is another traditional herb used to prevent and treat mild headaches. Ginger tea can also help by reducing inflammation."
+    },
+    {
+        "id": "q2_en",
+        "topic": "sleep and insomnia",
+        "language": "en",
+        "question": "Which herbs can help me sleep better at night?",
+        "ideal_answer": "Valerian root is widely studied for improving sleep quality and reducing the time it takes to fall asleep. Passionflower and lemon balm are also effective herbal sedatives. Lavender, whether inhaled as aromatherapy or consumed as tea, promotes relaxation and better sleep. Chamomile tea before bed is another popular option."
+    },
+    {
+        "id": "q3_en",
+        "topic": "digestive issues",
+        "language": "en",
+        "question": "What herbal teas are good for digestion and stomach problems?",
+        "ideal_answer": "Peppermint tea relaxes the digestive tract muscles and relieves bloating and gas. Ginger tea is excellent for nausea, indigestion, and stomach cramps. Fennel tea helps with bloating and flatulence. Chamomile tea soothes the stomach lining and may help with acid reflux. Licorice root (DGL form) can protect the stomach lining."
+    },
+    {
+        "id": "q4_en",
+        "topic": "immune support during cold",
+        "language": "en",
+        "question": "How can I boost my immune system naturally with herbs when I have a cold?",
+        "ideal_answer": "Echinacea is one of the most popular herbs for immune support and may reduce cold duration. Elderberry has antiviral properties and can help fight upper respiratory infections. Astragalus root strengthens overall immunity. Ginger and turmeric both have strong anti-inflammatory and immune-modulating effects. Garlic is a natural antimicrobial that supports immune function."
+    },
+    {
+        "id": "q5_en",
+        "topic": "stress and anxiety",
+        "language": "en",
+        "question": "What are the best herbal remedies for reducing stress and anxiety?",
+        "ideal_answer": "Ashwagandha is an adaptogenic herb well-known for reducing cortisol levels and managing stress. Passionflower has calming properties and is used for generalized anxiety. Lemon balm reduces nervousness and improves mood. Valerian root can reduce anxiety in addition to aiding sleep. Holy basil (Tulsi) is another adaptogen that helps the body cope with stress and promotes mental clarity."
+    }
+]

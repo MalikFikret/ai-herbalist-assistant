@@ -1,11 +1,17 @@
 # Run the application
 streamlit run src/app.py --server.address 0.0.0.0 --server.port 8502
 
-# Run the evaluation
-python scripts/evaluate_system.py
+# Run the evaluation for English
+python scripts/evaluate_system.py --lang en
 
-# Visualize the result of evaluation
-python scripts/visualize_results.py
+# Run the evaluation for Turkish
+python scripts/evaluate_system.py --lang tr
+
+# Visualize the result of evaluation for English
+python scripts/visualize_results.py --lang en
+
+# Visualize the result of evaluation for Turkish
+python scripts/visualize_results.py --lang tr
 
 # Draw the graph
 python scripts/visualize_graph.py

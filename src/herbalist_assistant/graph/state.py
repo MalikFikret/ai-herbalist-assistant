@@ -44,3 +44,5 @@ class AgentState(TypedDict, total=False):
     model_name: str
     # Runtime web-search backend chosen by the sidebar settings.
     web_search_provider: str
+    # Optional UI language preference (for retrieval language priority fallback).
+    ui_language: str

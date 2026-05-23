@@ -15,7 +15,7 @@ from ..components import (
     _source_entry_label,
 )
 from ..i18n import get_string
-from ..resources import reindex_pdfs
+from ..resources import delete_pdfs_from_index, index_new_pdfs, reindex_pdfs
 from ..state import iter_all_feedback
 from .chat import _truncate_chat_title
 
@@ -241,11 +241,31 @@ def _render_admin_panel() -> None:
                 )
                 st.caption(get_string(lang, "reindex_desc"))
                 if st.button(
+                    get_string(lang, "index_new_btn"),
+                    use_container_width=True,
+                ):
+                    with st.spinner(get_string(lang, "index_new_spinner")):
+                        stats = index_new_pdfs()
+                    st.session_state.last_index_time = datetime.now().strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    )
+                    indexed = stats.get("indexed") or []
+                    skipped = stats.get("skipped") or []
+                    if indexed:
+                        st.success(
+                            get_string(lang, "index_new_done").format(
+                                count=len(indexed),
+                                files=", ".join(indexed),
+                            )
+                        )
+                    else:
+                        st.info(get_string(lang, "index_new_none").format(count=len(skipped)))
+                if st.button(
                     get_string(lang, "reindex_btn"),
                     type="primary",
                     use_container_width=True,
                 ):
-                    with st.spinner("Rebuilding database from PDFs, please wait..."):
+                    with st.spinner(get_string(lang, "reindex_spinner")):
                         reindex_pdfs()
                     st.session_state.last_index_time = datetime.now().strftime(
                         "%Y-%m-%d %H:%M:%S"
@@ -269,13 +289,20 @@ def _render_admin_panel() -> None:
                             st.warning(get_string(lang, "select_pdf_warn"))
                         else:
                             data_dir = Path(config.DATA_DIR)
-                            deleted_count = 0
+                            removed_from_disk: list[str] = []
                             for filename in selected_delete:
                                 target = data_dir / filename
                                 if target.exists():
                                     target.unlink()
-                                    deleted_count += 1
-                            st.success(f"Deleted {deleted_count} PDF file(s).")
+                                    removed_from_disk.append(filename)
+                            if removed_from_disk:
+                                with st.spinner(get_string(lang, "delete_index_spinner")):
+                                    delete_pdfs_from_index(removed_from_disk)
+                            st.success(
+                                get_string(lang, "pdf_deleted").format(
+                                    count=len(removed_from_disk)
+                                )
+                            )
                             st.rerun()
                 else:
                     st.info(get_string(lang, "no_pdf"))

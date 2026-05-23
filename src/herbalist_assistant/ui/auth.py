@@ -48,10 +48,10 @@ _ADMIN_PASSWORD_SALT_SETTING_KEY = "admin_password_salt"
 AVAILABLE_MODELS: List[str] = [
     "llama-3.1-8b-instant",
     "llama-3.3-70b-versatile",
-    "gemini-1.5-flash",
+    "gemini-2.5-flash",
     "deepseek-chat",
 ]
-DEFAULT_MODEL = "llama-3.1-8b-instant"
+DEFAULT_MODEL = "gemini-2.5-flash"
 AVAILABLE_WEB_SEARCH_PROVIDERS: List[str] = ["Tavily", "DuckDuckGo"]
 DEFAULT_WEB_SEARCH_PROVIDER = "Tavily"
 
@@ -285,16 +285,28 @@ def _try_auto_login_from_cookie() -> None:
     cookie_mgr = _get_cookie_manager()
     if cookie_mgr is None:
         return
+
+    # Track cookie check attempts to prevent infinite iframe reruns on startup
+    if "ha_cookie_check_attempts" not in st.session_state:
+        st.session_state.ha_cookie_check_attempts = 0
+
     try:
         token = cookie_mgr.get(cookie=_REMEMBER_COOKIE_NAME)
     except Exception:
         _logger.debug("Remember-me cookie read failed", exc_info=True)
+        st.session_state["ha_remember_consumed"] = True
         return
+
+    st.session_state.ha_cookie_check_attempts += 1
+
     # The cookie manager returns None on the first run before the JS round-trip
     # completes; mark consumed only when we actually saw a token (or the cookie
     # is conclusively absent on a later rerun).
     if not token:
+        if st.session_state.ha_cookie_check_attempts > 1:
+            st.session_state["ha_remember_consumed"] = True
         return
+
     username = _verify_remember_token(str(token))
     if not username:
         try:
@@ -318,7 +330,7 @@ def _try_auto_login_from_cookie() -> None:
     )
     st.session_state.user_profile = profile
     if st.session_state.role == "user":
-        from .state import _sync_conversations_to_session
+        from .pages.chat import _sync_conversations_to_session
 
         start_new_chat(username)
         _sync_conversations_to_session(username)

@@ -1,0 +1,59 @@
+question_id,language,latency_seconds,accuracy_score,hallucination_score,answer_relevance_score,topic,question,ideal_answer,generated_answer,accuracy_explanation
+q1_tr,tr,49.01,0,no,yes,mild headache,Hafif bir baş ağrısı için iyi bir bitkisel ilaç nedir?,"Şakaklara uygulanan nane yağı gerilim baş ağrılarını hafifletebilir ve papatya çayı sakinleştirici, anti-enflamatuar özellikleriyle baş ağrısını azaltabilir. Gümüşdüğme (feverfew) hafif baş ağrılarını önlemek ve tedavi etmek için kullanılan geleneksel bir bitkidir. Zencefil çayı da iltihap azaltarak yardımcı olabilir.","Hafif bir baş ağrısı için iyi bir bitkisel ilaç olarak aşağıdaki seçenekler düşünülebilir:
+- Yeşil çay: Antioksidan açısından zengin olan yeşil çay, baş ağrısı ile mücadelede yardımcı olabilir.
+- Papatya çayı: Düzenli olarak papatya çayı tüketmek, huzurlu bir zihin için destek olurken, baş ağrısı riskini azaltabilir.
+- Zencefil çayı: Zencefil çayı başınızda zonklayan damarları yatıştırır ve vücudun ağrı algılayıcı kimyasallarının üretimini yavaşlatır.
+- Biberiye çayı: Biberiye çayı migrene çok faydalı olabilir.
+- Lavanta yağı: Lavanta yağının sakinleştirici ve gevşetici özellikleri, baş ağrısının şiddetini azaltmaya ve stresin etkilerini hafifletmeye yardımcı olabilir.
+
+Bu bitkisel çayları ve yağları kullanarak baş ağrısı hafifletilebilir. Ancak, doğru kullanım ve dozaj önemlidir.
+
+Bu bilgiler size yardımcı oldu mu? Başka bir şey için yardımınıza ihtiyacınız var mı? Eğer daha önce paylaşmadığınız bir sağlık profiliniz varsa, lütfen bizimle paylaşın ki size daha güvenli ve uygun önerilerde bulunabilelim.",Judge timed out.
+q2_tr,tr,28.59,0,no,yes,sleep and insomnia,Gece daha iyi uyumama hangi bitkiler yardımcı olabilir?,"Kediotu kökü (valerian) uyku kalitesini artırmak ve uykuya dalma süresini kısaltmak için yaygın şekilde çalışılmıştır. Çarkıfelek çiçeği ve melisa da etkili bitkisel sakinleştiricilerdir. Lavanta, ister aromaterapi olarak ister çay olarak tüketilsin, rahatlamayı ve daha iyi uykuyu teşvik eder. Yatmadan önce papatya çayı da popüler bir seçenektir.","Gece daha iyi uyumak için beberapa bitki çayı yardımcı olabilir. Bu bitkiler arasında:
+- Lavanta çayı
+- Papatya çayı
+- Melisa çayı
+- Kediotu kökü çayı
+- İhlamur çayı
+- Nane çayı
+- Rezene çayı
+- Pasiflora çayı
+- Yulaf samanı çayı
+
+Bu çaylar, doğal sakinleştirici bileşikleri sayesinde sinir sistemini yatıştırarak uykuya geçişi kolaylaştıran bitkisel içeceklerdir. Ayrıca, bu çayları düzenli olarak tüketmek, gevşeme sağlayarak uykuya daha kolay dalmanıza yardımcı olabilir.
+
+Uyku kalitenizi artırmak için doğru bitki seçimi yapmak önemlidir. Bu bitkileri çay olarak tüketebilir veya yatak odanızda bulunmalarıufficient olabilir. Doğru bitki seçimi ve düzenli bakım ile yatak odanızda huzurlu bir atmosfer yaratabilir ve daha dinlenmiş bir şekilde uyanabilirsiniz.
+
+Eğer daha önce sağlık profiliniz hakkında bilgi vermediyseniz, lütfen uyku sorunlarınızı etkileyebilecek herhangi bir sağlık koşulu veya alerjiniz olup olmadığını paylaşınız.",Judge timed out.
+q3_tr,tr,29.24,0,no,yes,digestive issues,Sindirim ve mide sorunları için hangi bitkisel çaylar iyidir?,"Nane çayı sindirim sistemi kaslarını gevşetir, şişkinlik ve gaz sorunlarını hafifletir. Zencefil çayı bulantı, hazımsızlık ve mide krampları için mükemmeldir. Rezene çayı şişkinlik ve gaz gidermeye yardımcı olur. Papatya çayı mide zarını yatıştırır ve mide asidi reflüsünde yardımcı olabilir. Meyan kökü (DGL formu) mide zarını koruyabilir.","Sindirim ve mide sorunları için beberapa bitkisel çay önerisi vardır.
+- Papatya çayı, mide kaslarını gevşetici özelliğe sahip olduğundan, şişkinlik ve mide kramplarını hafifletir.
+- Zencefil çayı, mide bulantısı ve hazımsızlık gibi sindirim sorunlarına karşı oldukça etkilidir.
+- Nane çayı, hazımsızlık ve şişkinlik gibi sorunlara karşı hızlı bir rahatlama sağlar.
+- Rezene çayı, sindirimi kolaylaştıran ve gaz problemlerini gideren bir diğer etkili bitki çayıdır.
+- Limon otu çayı, melisa bitkisinin yaprakları kullanılarak yapılan bir bitki çayıdır ve genellikle mideyi yatıştırmaya ve sindirime yardımcı olmak için kullanılır.
+- Meyan kökü çayı da mide yanmasını yatıştırmak için önerilmektedir.
+
+Bu bitkisel çaylar, sindirim sistemini rahatlatır ve mide rahatsızlıklarını hafifletir. Sindirim ve mide sorunları için bu çayları denemek faydalı olabilir.",Judge timed out.
+q4_tr,tr,31.97,0,no,yes,immune support during cold,Soğuk algınlığı olduğumda bağışıklık sistemimi bitkilerle doğal olarak nasıl güçlendirebilirim?,"Ekinezya bağışıklık desteği için en popüler bitkilerden biridir ve soğuk algınlığı süresini kısaltabilir. Mürver meyvesi antiviral özelliklere sahiptir ve üst solunum yolu enfeksiyonlarıyla mücadeleye yardımcı olabilir. Astragalus kökü genel bağışıklığı güçlendirir. Zencefil ve zerdeçal güçlü anti-enflamatuar ve bağışıklık düzenleyici etkilere sahiptir. Sarımsak, bağışıklık fonksiyonunu destekleyen doğal bir antimikrobiyaldir.","Soğuk algınlığı olduğunuzda bağışıklık sistemini bitkilerle doğal olarak güçlendirmek için beberapa seçenek bulunmaktadır.
+
+Kakule ve tarçın, soğuk algınlığı, bronşit, öksürük, yüksek ateş şikayetlerinin hafifletilmesinde ve ağız ve boğaz iltihaplarının giderilmesinde etkilidir. Zencefil kökü ve limon, soğuk algınlığına ve sindirime yardımcı olur. Ekinezya, nezle, soğuk algınlığından korur ve tedaviye yardımcıdır.
+
+Ayrıca, yeşil çay, zencefil çayı, kuşburnu çayı, ıhlamur çayı gibi bitki çayları da bağışıklık sistemini güçlendirmede yardımcıdır. Bu çaylar, anti-inflamatuar ve antioksidan özellikleriyle soğuk algınlığına karşı etkili olabilir.
+
+Sağlıklı beslenme, vitamin ve mineral zengini besinler, bol sıvı tüketimi de bağışıklık sistemini güçlendirmeye yardımcı olur. Turunçgiller, kivi, sarımsak, zencefil, zerdeçal, ıspanak, brokoli, yoğurt, kırmızı biber ve balık gibi besinler bağışıklık sistemini güçlendirici besinlerdir.
+
+Soğuk algınlığına karşı önlemler almak ve bağışıklık sistemini güçlendirmek için bu bitkisel çaylar ve besinleri düzenli olarak tüketmek faydalı olabilir.
+
+Eğer daha önce herhangi bir sağlık bilgisi paylaşmadınız, lütfen bağışıklık sistemini güçlendirmeye yönelik daha spesifik öneriler için sağlık durumunuz hakkında bilgi verin.",Judge timed out.
+q5_tr,tr,21.47,0,no,yes,stress and anxiety,Stres ve kaygıyı azaltmak için en iyi bitkisel ilaçlar nelerdir?,"Ashwagandha, kortizol seviyelerini düşürmek ve stresi yönetmek için bilinen adaptojenik bir bitkidir. Çarkıfelek çiçeği sakinleştirici özelliklere sahiptir ve genel kaygı bozukluğu için kullanılır. Melisa gerginliği azaltır ve ruh halini iyileştirir. Kediotu kökü uyku düzeninin yanı sıra kaygıyı da azaltabilir. Kutsal fesleğen (Tulsi) vücudun stresle başa çıkmasına yardımcı olan ve zihinsel netliği artıran bir adaptojenik bitkidir.","Stres ve kaygıyı azaltmak için en iyi bitkisel ilaçlar arasında aşağıdaki bitkiler bulunur:
+* Papatya: Rahatlatıcı ve anti-anksiyete özelliklere sahiptir.
+* Lavanta: Sakinleştirici, uyku ve ruh halini iyileştirmeye destekleyici bir bitki olarak kullanılıyor.
+* Melisa: Sinirleri yatıştırıcı, stres azaltıcı ve uykuyu düzenleyici özelliklere sahiptir.
+* Ashwagandha: Stres ve anksiyete hislerini azaltıyor.
+* Limon balsamı: Anksiyete, depresyon, stres ve uykusuzluk belirtilerini azaltabildiği görülmüş.
+* Adaçayı: Antioksidan etkisiyle vücudumuzu ve bağışıklık sistemimizi destekleyen bir bitki çayı olarak karşımıza çıkıyor.
+* Kedi otu: Kaygı kaynaklı uykusuzluğu çözmeye yardımcı olabilir.
+* Gotu kola: Kaygılar, depresyon, stres, uykusuzluk konusunda etkilidir.
+* Karanfil çayı: Stres ve kaygıdan kurtulmamızda etkili olan bir diğer bitki çayıdır.
+Bu bitkilerin çayı veya takviyesi olarak kullanılması stres ve kaygıyı azaltmaya yardımcı olabilir.
+Eğer daha önce paylaşmadığınız bir sağlık profiliniz varsa, lütfen bize bunu paylaşın ki size daha güvenli ve uygun önerilerde bulunabilelim.",Judge timed out.
