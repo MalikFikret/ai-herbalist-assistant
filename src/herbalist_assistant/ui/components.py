@@ -239,25 +239,12 @@ def _render_sidebar_guest_header(lang: str) -> None:
 }}
 </style>
 <div class="ha-sidebar-header">
-<<<<<<< HEAD
-  <p class="ha-sidebar-header__eyebrow{eyebrow_mod}">{nav_lbl}</p>
-  <div class="ha-guest-profile-card-v2">
-    <div class="avatar" aria-hidden="true">
-        <svg viewBox="0 0 24 24">
-            <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-        </svg>
-    </div>
-    <div class="meta">
-      <span class="hint">{hint_display}</span>
-      <span class="name">{guest}</span>
-=======
   <div class="ha-sidebar-header__eyebrow{eyebrow_mod}" role="heading" aria-level="2">{nav_lbl}</div>
   <div class="ha-sidebar-header__user-card">
     <div class="ha-sidebar-header__avatar" aria-hidden="true">?</div>
     <div class="ha-sidebar-header__user-meta">
       <span class="ha-sidebar-header__hint">{hint}</span>
       <span class="ha-sidebar-header__name">{guest}</span>
->>>>>>> 6d4d6d8fe5a04c9702b14cf27cfd8747b2a7d812
     </div>
   </div>
 </div>
