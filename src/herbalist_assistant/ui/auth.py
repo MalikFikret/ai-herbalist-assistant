@@ -318,7 +318,7 @@ def _try_auto_login_from_cookie() -> None:
     )
     st.session_state.user_profile = profile
     if st.session_state.role == "user":
-        from .state import _sync_conversations_to_session
+        from .pages.chat import _sync_conversations_to_session
 
         start_new_chat(username)
         _sync_conversations_to_session(username)

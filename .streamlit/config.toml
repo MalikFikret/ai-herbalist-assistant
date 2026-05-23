@@ -1,3 +1,10 @@
 [theme]
 base="light"
 primaryColor="#4B5940"
+backgroundColor="#F4F2EC"
+secondaryBackgroundColor="#F4F2EC"
+textColor="#2a3228"
+
+[theme.sidebar]
+backgroundColor="#F2EBE3"
+secondaryBackgroundColor="#F2EBE3"

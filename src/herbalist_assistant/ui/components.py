@@ -19,6 +19,33 @@ from .auth import (
 )
 from .i18n import get_string
 from .state import update_message_feedback
+from .styles import _auth_hero_logo_data_uri
+
+
+def _brand_logo_html(
+    *,
+    wrapper_class: str,
+    lang: str,
+    fallback_eyebrow_class: str = "",
+) -> str:
+    """Brand logo image (login + chat hero). Falls back to leaf/sparkle eyebrow when PNG is absent."""
+    uri = _auth_hero_logo_data_uri()
+    if uri:
+        alt = _html.escape(str(get_string(lang, "app_title")))
+        return (
+            f'<div class="{wrapper_class}">'
+            f'<img src="{uri}" alt="{alt}" loading="lazy" decoding="async" />'
+            f"</div>"
+        )
+    if fallback_eyebrow_class:
+        return (
+            f'<p class="{fallback_eyebrow_class}" aria-hidden="true">'
+            f'<span class="{fallback_eyebrow_class}__leaf">🌿</span>'
+            f'<span class="{fallback_eyebrow_class}__sparkle">✦</span>'
+            f'<span class="{fallback_eyebrow_class}__sparkle">✦</span>'
+            f"</p>"
+        )
+    return ""
 
 
 def _section_nav_label(lang: str, section_id: str) -> str:
@@ -37,7 +64,7 @@ def _on_guest_top_nav() -> None:
         st.session_state["active_page"] = pick
 
 
-def _render_header() -> None:
+def _render_header(*, in_sidebar: bool = False) -> None:
     lang = st.session_state.get("language", "en")
     raw_title = get_string(lang, "app_title")
     title = raw_title if isinstance(raw_title, str) else "AI Herbalist Assistant"
@@ -47,7 +74,8 @@ def _render_header() -> None:
         .replace("\n", " ")
         .strip()
     )
-    st.markdown(
+    target = st.sidebar if in_sidebar else st
+    target.markdown(
         f'''
         <style>
         [data-testid="stHeader"] {{
@@ -88,6 +116,14 @@ def _render_header() -> None:
         section.main .block-container {{
             padding-top: 0.5rem !important;
         }}
+        section.main:has(.st-key-ha_chat_composer_row) .block-container {{
+            padding-top: 0 !important;
+            margin-top: 0 !important;
+        }}
+        section.main:has(.st-key-ha_profile_page) .block-container {{
+            padding-top: 0 !important;
+            margin-top: 0 !important;
+        }}
         </style>
         ''',
         unsafe_allow_html=True,
@@ -105,7 +141,7 @@ def _render_sidebar_user_header(lang: str, username: str) -> None:
     st.markdown(
         f"""
 <div class="ha-sidebar-header">
-  <p class="ha-sidebar-header__eyebrow{eyebrow_mod}">{nav_lbl}</p>
+  <div class="ha-sidebar-header__eyebrow{eyebrow_mod}" role="heading" aria-level="2">{nav_lbl}</div>
   <div class="ha-sidebar-header__user-card">
     <div class="ha-sidebar-header__avatar" aria-hidden="true">{initial}</div>
     <div class="ha-sidebar-header__user-meta">
@@ -128,7 +164,7 @@ def _render_sidebar_guest_header(lang: str) -> None:
     st.markdown(
         f"""
 <div class="ha-sidebar-header">
-  <p class="ha-sidebar-header__eyebrow{eyebrow_mod}">{nav_lbl}</p>
+  <div class="ha-sidebar-header__eyebrow{eyebrow_mod}" role="heading" aria-level="2">{nav_lbl}</div>
   <div class="ha-sidebar-header__user-card">
     <div class="ha-sidebar-header__avatar" aria-hidden="true">?</div>
     <div class="ha-sidebar-header__user-meta">
@@ -143,23 +179,24 @@ def _render_sidebar_guest_header(lang: str) -> None:
 
 
 def _render_auth_language_switch(lang: str) -> None:
-    """Compact EN/TR control (auth top bar: rendered above tabs, CSS aligns right)."""
+    """Auth language dropdown (EN / TR); changes app language on selection."""
+    options = ["en", "tr"]
+    current = lang if lang in options else "en"
+
+    def _lang_label(code: str) -> str:
+        key = "auth_lang_option_english" if code == "en" else "auth_lang_option_turkish"
+        return str(get_string(current, key))
+
     with st.container(key="ha_auth_lang_header"):
-        new_lang = st.segmented_control(
-            get_string(lang, "auth_lang_label"),
-            options=["en", "tr"],
-            selection_mode="single",
-            format_func=lambda x: get_string(
-                lang,
-                "auth_lang_option_english" if x == "en" else "auth_lang_option_turkish",
-            ),
-            default=lang,
-            key="auth_lang_segmented",
+        picked = st.selectbox(
+            get_string(current, "auth_lang_label"),
+            options=options,
+            index=options.index(current),
+            format_func=_lang_label,
+            key="auth_lang_select",
             label_visibility="collapsed",
-            width="content",
         )
-    picked = new_lang if new_lang is not None else lang
-    if picked != lang:
+    if picked and picked != current:
         st.session_state.language = picked
         st.rerun()
 
@@ -238,29 +275,55 @@ def _render_copy_button(
     confirm_text = _html.escape(_copy_confirm_text())
     components.html(
         f"""
-        <div style=\\"display:flex;\\">
-          <button id=\\"{key}\\"
-            type=\\"button\\"
-            style=\\"
-              border: 1px solid rgba(120,120,120,0.32);
-              background: var(--background-color, #ffffff);
-              color: var(--text-color, #222);
-              border-radius: 7px;
-              padding: 3px 8px;
-              font-size: 0.74rem;
-              font-weight: 500;
+        <div class=\\"ha-assistant-copy-wrap\\" style=\\"display:flex;align-items:center;\\">
+          <button id=\\"{key}\\" type=\\"button\\" class=\\"ha-assistant-copy-btn\\"
+            title=\\"{safe_label}\\" aria-label=\\"{safe_label}\\">
+            <svg class=\\"ha-assistant-copy-btn__icon\\" width=\\"18\\" height=\\"18\\"
+              viewBox=\\"0 0 24 24\\" fill=\\"none\\" aria-hidden=\\"true\\">
+              <rect width=\\"14\\" height=\\"14\\" x=\\"8\\" y=\\"8\\" rx=\\"2\\" ry=\\"2\\"></rect>
+              <path d=\\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\\"></path>
+            </svg>
+          </button>
+          <style>
+            .ha-assistant-copy-btn {{
+              border: 1px solid rgba(92, 111, 94, 0.16);
+              background: rgba(255, 255, 255, 0.78);
+              color: #4a5248;
+              border-radius: 10px;
+              padding: 0;
+              width: 1.85rem;
+              height: 1.85rem;
+              min-width: 1.85rem;
+              min-height: 1.85rem;
               cursor: pointer;
               display: inline-flex;
               align-items: center;
-              gap: 4px;
-              line-height: 1.2;
-            \\">
-            <span>{safe_label}</span>
-          </button>
+              justify-content: center;
+              box-shadow: 0 1px 3px rgba(60, 78, 58, 0.04);
+              transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+            }}
+            .ha-assistant-copy-btn__icon {{
+              stroke: #4a5248;
+              stroke-width: 1.75;
+              stroke-linecap: round;
+              stroke-linejoin: round;
+              fill: none;
+              display: block;
+            }}
+            .ha-assistant-copy-btn:hover {{
+              background: #ffffff;
+              border-color: rgba(92, 111, 94, 0.26);
+              box-shadow: 0 2px 8px rgba(60, 78, 58, 0.08);
+            }}
+            .ha-assistant-copy-btn:active {{
+              transform: translateY(1px);
+            }}
+          </style>
           <script>
             (function() {{
               const btn = document.getElementById(\\"{key}\\");
               if (!btn) return;
+              const defaultTitle = \\"{safe_label}\\";
               btn.addEventListener(\\"click\\", async function () {{
                 try {{
                   await navigator.clipboard.writeText({safe_text});
@@ -272,16 +335,15 @@ def _render_copy_button(
                   try {{ document.execCommand(\\"copy\\"); }} catch (e) {{}}
                   document.body.removeChild(ta);
                 }}
-                const previous = btn.innerText;
-                btn.innerText = \\"{confirm_text}\\";
-                setTimeout(function () {{ btn.innerText = previous; }}, 1200);
+                btn.title = \\"{confirm_text}\\";
+                setTimeout(function () {{ btn.title = defaultTitle; }}, 1200);
               }});
             }})();
           </script>
         </div>
         """,
-        height=32,
-        width=132,
+        height=36,
+        width=44,
     )
 
 
@@ -326,24 +388,16 @@ def _render_feedback_controls(
     current: str | None,
 ) -> None:
     """Render helpful / unhelpful pair. Clicking toggles (click-again clears)."""
-    up_label = (
-        get_string(lang, "feedback_btn_helpful_selected")
-        if current == "up"
-        else get_string(lang, "feedback_btn_helpful")
-    )
-    down_label = (
-        get_string(lang, "feedback_btn_unhelpful_selected")
-        if current == "down"
-        else get_string(lang, "feedback_btn_unhelpful")
-    )
     base_key = f"fb_{chat_id}_{message_index}"
 
     with st.container(key=f"ha_assistant_feedback_group_{message_index}"):
         col_up, col_down = st.columns(2, gap="small", vertical_alignment="center")
         with col_up:
             if st.button(
-                up_label,
+                "",
                 key=f"{base_key}_up",
+                icon=":material/thumb_up:",
+                type="primary" if current == "up" else "secondary",
                 help=get_string(lang, "feedback_up_help"),
                 use_container_width=True,
             ):
@@ -358,8 +412,10 @@ def _render_feedback_controls(
                     st.rerun()
         with col_down:
             if st.button(
-                down_label,
+                "",
                 key=f"{base_key}_down",
+                icon=":material/thumb_down:",
+                type="primary" if current == "down" else "secondary",
                 help=get_string(lang, "feedback_down_help"),
                 use_container_width=True,
             ):
@@ -394,13 +450,23 @@ def _render_assistant_action_row(
     has_sources = bool(_normalize_sources(sources))
     with st.container(key=f"ha_assistant_actions_row_{message_index}"):
         if with_feedback:
-            col_copy, col_src, col_fb, spacer = st.columns(
-                [1.15, 2.35, 1.05, 5.5], vertical_alignment="center"
-            )
+            if has_sources:
+                col_copy, col_src, col_fb, spacer = st.columns(
+                    [0.72, 1.65, 0.72, 6.6], vertical_alignment="center"
+                )
+            else:
+                col_copy, col_fb, spacer = st.columns(
+                    [0.72, 0.72, 8.5], vertical_alignment="center"
+                )
+                col_src = None
         else:
-            col_copy, col_src, spacer = st.columns(
-                [1.15, 2.35, 6.5], vertical_alignment="center"
-            )
+            if has_sources:
+                col_copy, col_src, spacer = st.columns(
+                    [0.72, 1.65, 7.3], vertical_alignment="center"
+                )
+            else:
+                col_copy, spacer = st.columns([0.72, 9.2], vertical_alignment="center")
+                col_src = None
             col_fb = None
 
         with col_copy:
@@ -411,16 +477,14 @@ def _render_assistant_action_row(
                     label=get_string(lang, "copy_btn"),
                 )
 
-        with col_src:
-            with st.container(key=f"ha_assistant_sources_cell_{message_index}"):
-                if has_sources:
+        if col_src is not None and has_sources:
+            with col_src:
+                with st.container(key=f"ha_assistant_sources_cell_{message_index}"):
                     _render_sources_popover(
                         lang=lang,
                         sources=sources,
                         message_index=message_index,
                     )
-                else:
-                    st.caption(get_string(lang, "no_sources"))
 
         if with_feedback and col_fb is not None:
             with col_fb:
