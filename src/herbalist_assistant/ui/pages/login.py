@@ -33,33 +33,33 @@ def _render_auth_screen() -> None:
         st.session_state.auth_mode = "Login"
 
     with st.container(key="ha_auth_shell"):
-        if not st.session_state.is_logged_in:
-            if st.button(
-                get_string(lang, "auth_back_to_chat"),
-                key="ha_auth_back_chat",
-                type="tertiary",
-            ):
-                st.session_state.active_page = "Chat"
-                # Keep nav radio in sync (sidebar was skipped on Login; widget state could stay "Login").
-                st.session_state["ha_nav_guest_top"] = "Chat"
-                # Misafir mod açıkça seçildi: cookie hala tarayıcıda olsa
-                # bile bu session boyunca auto-login'i devreye sokma.
-                st.session_state["ha_remember_consumed"] = True
-                st.session_state["ha_guest_explicit"] = True
-                st.rerun()
         with st.container(key="ha_auth_card"):
-            left_col, right_col = st.columns([0.9, 1.1], gap="small")
+            if not st.session_state.is_logged_in:
+                with st.container(key="ha_auth_back_chat_wrap"):
+                    if st.button(
+                        get_string(lang, "auth_back_to_chat"),
+                        key="ha_auth_back_chat",
+                        type="tertiary",
+                    ):
+                        st.session_state.active_page = "Chat"
+                        # Keep nav radio in sync (sidebar was skipped on Login; widget state could stay "Login").
+                        st.session_state["ha_nav_guest_top"] = "Chat"
+                        # Misafir mod açıkça seçildi: cookie hala tarayıcıda olsa
+                        # bile bu session boyunca auto-login'i devreye sokma.
+                        st.session_state["ha_remember_consumed"] = True
+                        st.session_state["ha_guest_explicit"] = True
+                        st.rerun()
+            left_col, right_col = st.columns([1, 1], gap="small")
 
-            w_title = _html.escape(get_string(lang, "auth_lux_welcome_title"))
-            w_lead = _html.escape(get_string(lang, "auth_lux_welcome_lead"))
-
+            w_panel = _html.escape(get_string(lang, "auth_lux_welcome_title"))
+            w_tagline = _html.escape(get_string(lang, "auth_lux_panel_tagline"))
             with left_col:
                 st.markdown(
                     f"""
-                    <div class="ha-lux-welcome ha-lux-welcome--text">
-                        <div class="ha-lux-welcome__inner">
-                            <h1 class="ha-lux-welcome__title">{w_title}</h1>
-                            <p class="ha-lux-welcome__lead">{w_lead}</p>
+                    <div class="ha-lux-welcome ha-lux-welcome--panel">
+                        <div class="ha-lux-welcome--panel__inner">
+                            <h1 class="ha-lux-welcome--panel__title">{w_panel}</h1>
+                            <p class="ha-lux-welcome--panel__tagline">{w_tagline}</p>
                         </div>
                     </div>
                     """,
@@ -152,95 +152,87 @@ def _render_auth_screen() -> None:
                                 key="auth_lux_tab_ui",
                             )
 
-                    if auth_lux_tab == "login":
-                        st.markdown(
-                            f'<div class="ha-lux-form-title">{_html.escape(get_string(lang, "auth_lux_login_title"))}</div>',
-                            unsafe_allow_html=True,
-                        )
-                        st.markdown(
-                            f'<div class="ha-lux-form-sub">{_html.escape(get_string(lang, "auth_lux_login_sub"))}</div>',
-                            unsafe_allow_html=True,
-                        )
-                        # Username form'un DIŞINDA: on_change burada gerçek
-                        # zamanlı tetiklenir → kullanıcı adı yazılıp Tab/Enter
-                        # ile commit edilince hatırlanan şifre otomatik dolar.
-                        with st.container(key="ha_lux_username_outside"):
-                            st.text_input(
-                                get_string(lang, "username"),
-                                key="login_username",
-                                label_visibility="collapsed",
-                                placeholder=get_string(lang, "auth_lux_email_ph"),
-                                on_change=_on_login_username_change,
+                    with st.container(key="ha_auth_form_body"):
+                        if auth_lux_tab == "login":
+                            st.markdown(
+                                f'<div class="ha-lux-form-title">{_html.escape(get_string(lang, "auth_lux_login_title"))}</div>',
+                                unsafe_allow_html=True,
                             )
-
-                        with st.form("login_form", clear_on_submit=False, border=False):
-                            st.text_input(
-                                get_string(lang, "password"),
-                                type="password",
-                                key="login_password",
-                                label_visibility="collapsed",
-                                placeholder=get_string(lang, "auth_lux_password_ph"),
+                            st.markdown(
+                                f'<div class="ha-lux-form-sub">{_html.escape(get_string(lang, "auth_lux_login_sub"))}</div>',
+                                unsafe_allow_html=True,
                             )
-                            with st.container(key="ha_lux_remember_row"):
-                                st.checkbox(
-                                    get_string(lang, "auth_remember_me"),
-                                    key="auth_remember_me",
+                            # E-posta form dışında: on_change anında tetiklenir.
+                            with st.container(key="ha_lux_username_outside"):
+                                st.text_input(
+                                    get_string(lang, "username"),
+                                    key="login_username",
+                                    label_visibility="collapsed",
+                                    placeholder=get_string(lang, "auth_lux_email_ph"),
+                                    on_change=_on_login_username_change,
                                 )
-                            # Form içinde TEK submit button: Login. Bu sayede
-                            # password içinde Enter'a basıldığında doğrudan
-                            # Login submit edilir.
-                            with st.container(key="ha_auth_primary_submit"):
-                                submit_login = st.form_submit_button(
-                                    get_string(lang, "login_btn"),
-                                    type="primary",
-                                    use_container_width=False,
+                            with st.container(key="ha_lux_remember_forgot_bar"):
+                                with st.form("login_form", clear_on_submit=False, border=False):
+                                    st.text_input(
+                                        get_string(lang, "password"),
+                                        type="password",
+                                        key="login_password",
+                                        label_visibility="collapsed",
+                                        placeholder=get_string(lang, "auth_lux_password_ph"),
+                                    )
+                                    with st.container(key="ha_lux_remember_row"):
+                                        st.checkbox(
+                                            get_string(lang, "auth_remember_me"),
+                                            key="auth_remember_me",
+                                        )
+                                    with st.container(key="ha_auth_primary_submit"):
+                                        submit_login = st.form_submit_button(
+                                            get_string(lang, "login_btn"),
+                                            type="primary",
+                                            use_container_width=True,
+                                        )
+                                with st.container(key="ha_lux_forgot_row"):
+                                    submit_forgot = st.button(
+                                        get_string(lang, "forgot_pwd"),
+                                        type="tertiary",
+                                        key="login_forgot_outside",
+                                    )
+                        else:
+                            st.markdown(
+                                f'<div class="ha-lux-form-title">{_html.escape(get_string(lang, "auth_lux_register_title"))}</div>',
+                                unsafe_allow_html=True,
+                            )
+                            st.markdown(
+                                f'<div class="ha-lux-form-sub">{_html.escape(get_string(lang, "auth_lux_register_sub"))}</div>',
+                                unsafe_allow_html=True,
+                            )
+                            with st.form("register_form", clear_on_submit=True, border=False):
+                                st.text_input(
+                                    get_string(lang, "username"),
+                                    key="register_username",
+                                    label_visibility="collapsed",
+                                    placeholder=get_string(lang, "auth_lux_email_ph"),
                                 )
-
-                        # Forgot password: form'un DIŞINDA, sıradan bir buton.
-                        # Form içinde ekstra submit_button olmadığı için Enter
-                        # sadece Login'i tetikler.
-                        with st.container(key="ha_lux_forgot_row"):
-                            submit_forgot = st.button(
-                                get_string(lang, "forgot_pwd"),
-                                type="tertiary",
-                                key="login_forgot_outside",
-                            )
-                    else:
-                        st.markdown(
-                            f'<div class="ha-lux-form-title">{_html.escape(get_string(lang, "auth_lux_register_title"))}</div>',
-                            unsafe_allow_html=True,
-                        )
-                        st.markdown(
-                            f'<div class="ha-lux-form-sub">{_html.escape(get_string(lang, "auth_lux_register_sub"))}</div>',
-                            unsafe_allow_html=True,
-                        )
-                        with st.form("register_form", clear_on_submit=True, border=False):
-                            st.text_input(
-                                get_string(lang, "username"),
-                                key="register_username",
-                                label_visibility="collapsed",
-                                placeholder=get_string(lang, "auth_lux_email_ph"),
-                            )
-                            st.text_input(
-                                get_string(lang, "password"),
-                                type="password",
-                                key="register_password",
-                                label_visibility="collapsed",
-                                placeholder=get_string(lang, "auth_lux_password_ph"),
-                            )
-                            st.text_input(
-                                get_string(lang, "confirm_password"),
-                                type="password",
-                                key="register_confirm_password",
-                                label_visibility="collapsed",
-                                placeholder=get_string(lang, "auth_lux_password_ph"),
-                            )
-                            with st.container(key="ha_auth_primary_submit"):
-                                submit_register = st.form_submit_button(
-                                    get_string(lang, "create_account"),
-                                    type="primary",
-                                    use_container_width=False,
+                                st.text_input(
+                                    get_string(lang, "password"),
+                                    type="password",
+                                    key="register_password",
+                                    label_visibility="collapsed",
+                                    placeholder=get_string(lang, "auth_lux_password_ph"),
                                 )
+                                st.text_input(
+                                    get_string(lang, "confirm_password"),
+                                    type="password",
+                                    key="register_confirm_password",
+                                    label_visibility="collapsed",
+                                    placeholder=get_string(lang, "auth_lux_password_ph"),
+                                )
+                                with st.container(key="ha_auth_primary_submit"):
+                                    submit_register = st.form_submit_button(
+                                        get_string(lang, "create_account"),
+                                        type="primary",
+                                        use_container_width=True,
+                                    )
 
                     if submit_forgot:
                         st.session_state.auth_mode = "Reset Password"

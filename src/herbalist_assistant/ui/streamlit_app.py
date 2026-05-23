@@ -89,14 +89,99 @@ from .pages.chat import (  # noqa: E402, F811
 )
 
 
+def _sidebar_placeholder_chat_titles(lang: str) -> set[str]:
+    """Titles that should not appear in the sidebar conversation list."""
+    return {
+        get_string(lang, "new_chat").strip().lower(),
+        "new chat",
+        "yeni sohbet",
+    }
+
+
+def _chat_visible_in_sidebar(chat: dict, lang: str) -> bool:
+    """Skip empty / placeholder chats — use the single New Chat action instead."""
+    if not chat.get("id"):
+        return False
+    title = (chat.get("title") or get_string(lang, "new_chat")).strip().lower()
+    if title in _sidebar_placeholder_chat_titles(lang):
+        return False
+    if int(chat.get("message_count", 0) or 0) <= 1:
+        return False
+    return True
+
+
+def _sidebar_visible_chats(username: str, lang: str) -> list[dict]:
+    """Deduplicated chat summaries for the sidebar list (newest first)."""
+    user_chats = get_user_chat_summaries(username)
+    chats_desc: list[dict] = []
+    seen_chat_ids: set[str] = set()
+    for chat in reversed(user_chats):
+        chat_id = chat.get("id", "")
+        if not chat_id or chat_id in seen_chat_ids:
+            continue
+        if not _chat_visible_in_sidebar(chat, lang):
+            continue
+        seen_chat_ids.add(chat_id)
+        chats_desc.append(chat)
+    return chats_desc
+
+
+def _open_sidebar_chat(username: str, chat_id: str) -> None:
+    """Switch active chat and show the Chat page."""
+    changed = chat_id != st.session_state.get("active_chat_id", "")
+    if changed:
+        set_active_chat(username, chat_id)
+        _sync_conversations_to_session(username)
+    if changed or st.session_state.get("active_page") != "Chat":
+        st.session_state.active_page = "Chat"
+        st.rerun()
+
+
+def _delete_sidebar_chat(username: str, chat_id: str, lang: str) -> None:
+    if delete_chat(username, chat_id):
+        _sync_conversations_to_session(username)
+        st.session_state.active_page = "Chat"
+        st.success(get_string(lang, "chat_deleted"))
+        st.rerun()
+    st.error(get_string(lang, "chat_delete_err"))
+
+
+def _render_logged_in_sidebar_footer(lang: str, *, lang_key: str) -> None:
+    """Language near content; logout pinned to the bottom of the sidebar."""
+    with st.container(key="ha_sidebar_user_footer"):
+        with st.container(key="ha_sidebar_user_footer_lang"):
+            langs = {"en": "English", "tr": "Türkçe"}
+            new_lang_sidebar = st.selectbox(
+                "Language / Dil",
+                options=list(langs.keys()),
+                format_func=lambda x: langs[x],
+                index=list(langs.keys()).index(lang),
+                key=lang_key,
+                label_visibility="collapsed",
+            )
+            if new_lang_sidebar != lang:
+                st.session_state.language = new_lang_sidebar
+                st.rerun()
+        st.markdown(
+            '<div class="ha-sidebar-user-footer-spacer" aria-hidden="true"></div>',
+            unsafe_allow_html=True,
+        )
+        with st.container(key="ha_sidebar_user_footer_logout"):
+            if st.button(
+                get_string(lang, "logout"),
+                use_container_width=True,
+                icon=":material/logout:",
+                key="ha_sidebar_logout",
+            ):
+                _logout()
+
+
 def run() -> None:
     st.set_page_config(
         page_title="AI Herbalist Assistant",
         layout="wide",
         initial_sidebar_state="expanded",
     )
-    _inject_global_styles()
-    _inject_chat_layout_script()
     _init_auth_state()
     _initialize_cookie_manager()
     _try_auto_login_from_cookie()
@@ -104,16 +189,20 @@ def run() -> None:
 
     # ``guest_on_login``: hide sidebar on full-bleed auth; Login is a bottom sidebar button, not
     # the top Chat/Profile radio.
-    guest_on_login = False
-    if not st.session_state.get("is_logged_in") and st.session_state.get("active_page") == "Login":
-        guest_on_login = True
+    guest_on_login = (
+        not st.session_state.get("is_logged_in")
+        and st.session_state.get("active_page") == "Login"
+    )
+    # Keep all style/script injects in main so sidebar DOM matches guest (nav at top).
+    _inject_global_styles(in_sidebar=False)
+    _inject_chat_layout_script(in_sidebar=False)
 
     lang = st.session_state.get("language", "en")
 
     if st.session_state.is_logged_in and st.session_state.role == "user":
         st.session_state.user_profile = _get_user_profile(st.session_state.username)
 
-    _render_header()
+    _render_header(in_sidebar=False)
     if guest_on_login:
         # After header styles so sidebar is gone and brand offset overrides header CSS.
         _inject_guest_login_fullbleed_styles()
@@ -126,134 +215,158 @@ def run() -> None:
                 _render_sidebar_guest_header(lang)
 
             if st.session_state.is_logged_in and st.session_state.role == "admin":
-                sections = ["Admin Panel", "Chat"]
-                current_index = sections.index(st.session_state.active_page) if st.session_state.active_page in sections else 0
-                selected_section = st.radio(
-                    "Select section",
-                    sections,
-                    index=current_index,
-                    format_func=lambda s: _section_nav_label(lang, s),
-                    label_visibility="collapsed",
-                    key="ha_nav_admin",
-                    horizontal=True,
-                )
-                st.session_state.active_page = selected_section
+                with st.container(key="ha_sidebar_user_main"):
+                    with st.container(key="ha_sidebar_user_body"):
+                        with st.container(key="ha_sidebar_user_nav"):
+                            sections = ["Admin Panel", "Chat"]
+                            current_index = (
+                                sections.index(st.session_state.active_page)
+                                if st.session_state.active_page in sections
+                                else 0
+                            )
+                            selected_section = st.radio(
+                                "Select section",
+                                sections,
+                                index=current_index,
+                                format_func=lambda s: _section_nav_label(lang, s),
+                                label_visibility="collapsed",
+                                key="ha_nav_admin",
+                            )
+                        st.session_state.active_page = selected_section
+                    _render_logged_in_sidebar_footer(
+                        lang, lang_key="language_selector_sidebar_admin"
+                    )
             elif st.session_state.is_logged_in:
-                sections = ["Chat", "Profile"]
-                current_index = sections.index(st.session_state.active_page) if st.session_state.active_page in sections else 0
-                selected_section = st.radio(
-                    "Select section",
-                    sections,
-                    index=current_index,
-                    format_func=lambda s: _section_nav_label(lang, s),
-                    label_visibility="collapsed",
-                    key="ha_nav_user",
-                    horizontal=True,
-                )
-                st.session_state.active_page = selected_section
-                if st.button(
-                    get_string(lang, "new_chat"),
-                    use_container_width=True,
-                    type="primary",
-                    icon=":material/edit_square:",
-                    key="ha_sidebar_new_chat",
-                ):
-                    start_new_chat(st.session_state.username)
-                    _sync_conversations_to_session(st.session_state.username)
-                    st.session_state.active_page = "Chat"
-                    st.rerun()
+                with st.container(key="ha_sidebar_user_main"):
+                    with st.container(key="ha_sidebar_user_body"):
+                        with st.container(key="ha_sidebar_user_nav"):
+                            active_page = st.session_state.get("active_page", "Chat")
+                            nav_col_chat, nav_col_profile = st.columns(2, gap="small")
+                            with nav_col_chat:
+                                if st.button(
+                                    _section_nav_label(lang, "Chat"),
+                                    key="ha_nav_user_chat",
+                                    use_container_width=True,
+                                    type="primary" if active_page == "Chat" else "secondary",
+                                ):
+                                    start_new_chat(st.session_state.username)
+                                    _sync_conversations_to_session(
+                                        st.session_state.username
+                                    )
+                                    st.session_state.active_page = "Chat"
+                                    st.rerun()
+                            with nav_col_profile:
+                                if st.button(
+                                    _section_nav_label(lang, "Profile"),
+                                    key="ha_nav_user_profile",
+                                    use_container_width=True,
+                                    type="primary" if active_page == "Profile" else "secondary",
+                                ):
+                                    st.session_state.active_page = "Profile"
+                                    st.rerun()
 
-                if selected_section == "Chat":
-                    st.markdown(f'<div class="ha-sidebar-title">{get_string(lang, "your_chats")}</div>', unsafe_allow_html=True)
-                    st.markdown(f'<div class="ha-sidebar-subtitle">{get_string(lang, "recent_conversations")}</div>', unsafe_allow_html=True)
-                    user_chats = get_user_chat_summaries(st.session_state.username)
-                    active_chat_id = st.session_state.get("active_chat_id", "")
+                        # Chat tools stay visible on Profile too (same sidebar as Chat).
+                        with st.container(key="ha_sidebar_chat_panel"):
+                            st.markdown(
+                                f'<div class="ha-sidebar-title">{get_string(lang, "your_chats")}</div>',
+                                unsafe_allow_html=True,
+                            )
+                            st.markdown(
+                                f'<div class="ha-sidebar-subtitle">{get_string(lang, "recent_conversations")}</div>',
+                                unsafe_allow_html=True,
+                            )
+                            chats_desc = _sidebar_visible_chats(
+                                st.session_state.username, lang
+                            )
+                            active_chat_id = st.session_state.get("active_chat_id", "")
 
-                    chats_desc = []
-                    seen_chat_ids = set()
-                    for chat in reversed(user_chats):
-                        chat_id = chat.get("id", "")
-                        if not chat_id or chat_id in seen_chat_ids:
-                            continue
-                        if chat_id != active_chat_id:
-                            if int(chat.get("message_count", 0) or 0) <= 1:
-                                continue
-                            if chat.get("title", get_string(lang, "new_chat")).strip().lower() == get_string(lang, "new_chat").lower() or chat.get("title", "New Chat").strip().lower() == "new chat":
-                                continue
-                        seen_chat_ids.add(chat_id)
-                        chats_desc.append(chat)
-                    chat_ids = [chat.get("id", "") for chat in chats_desc if chat.get("id")]
-                    title_map = {chat.get("id", ""): chat.get("title", get_string(lang, "new_chat")) for chat in chats_desc}
-                    if chat_ids:
-                        current_chat = active_chat_id if active_chat_id in chat_ids else chat_ids[0]
-                        previous_sidebar_chat = st.session_state.get("sidebar_selected_chat_id")
-                        selected_chat_id = st.radio(
-                            "Conversation list",
-                            options=chat_ids,
-                            index=chat_ids.index(current_chat),
-                            format_func=lambda cid: _truncate_chat_title(title_map.get(cid, get_string(lang, "new_chat"))),
-                            label_visibility="collapsed",
-                        )
-                        st.session_state.sidebar_selected_chat_id = selected_chat_id
-                        if previous_sidebar_chat is not None and selected_chat_id != previous_sidebar_chat:
-                            if set_active_chat(st.session_state.username, selected_chat_id):
-                                _sync_conversations_to_session(st.session_state.username)
-                                st.session_state.active_page = "Chat"
-                                st.rerun()
-                        if st.button(
-                            get_string(lang, "delete_chat"),
-                            use_container_width=True,
-                            icon=":material/delete:",
-                            key="ha_sidebar_delete_chat",
-                        ):
-                            if delete_chat(st.session_state.username, selected_chat_id):
-                                _sync_conversations_to_session(st.session_state.username)
-                                st.session_state.active_page = "Chat"
-                                st.success(get_string(lang, "chat_deleted"))
-                                st.rerun()
+                            if chats_desc:
+                                with st.container(key="ha_sidebar_chat_list"):
+                                    for chat in chats_desc:
+                                        chat_id = chat.get("id", "")
+                                        title = _truncate_chat_title(
+                                            chat.get("title", get_string(lang, "new_chat"))
+                                        )
+                                        col_open, col_del = st.columns(
+                                            [5, 1], gap="small"
+                                        )
+                                        with col_open:
+                                            is_active = chat_id == active_chat_id
+                                            if st.button(
+                                                title,
+                                                key=f"ha_sidebar_chat_open_{chat_id}",
+                                                use_container_width=True,
+                                                type=(
+                                                    "primary"
+                                                    if is_active
+                                                    else "secondary"
+                                                ),
+                                            ):
+                                                _open_sidebar_chat(
+                                                    st.session_state.username, chat_id
+                                                )
+                                        with col_del:
+                                            if st.button(
+                                                "",
+                                                key=f"ha_sidebar_chat_del_{chat_id}",
+                                                icon=":material/delete:",
+                                                type="tertiary",
+                                                help=get_string(lang, "delete_chat"),
+                                            ):
+                                                _delete_sidebar_chat(
+                                                    st.session_state.username,
+                                                    chat_id,
+                                                    lang,
+                                                )
                             else:
-                                st.error(get_string(lang, "chat_delete_err"))
-                    else:
-                        st.session_state.sidebar_selected_chat_id = None
-                        st.caption(get_string(lang, "no_past_chats"))
+                                st.caption(get_string(lang, "no_past_chats"))
+
+                    _render_logged_in_sidebar_footer(
+                        lang, lang_key="language_selector_sidebar_user"
+                    )
             else:
-                _guest_top = ("Chat", "Profile")
-                if st.session_state.active_page in _guest_top:
-                    _gidx = _guest_top.index(st.session_state.active_page)
-                else:
-                    # On Login: keep last Chat/Profile in the radio (key ``ha_nav_guest_top``)
-                    _prev = st.session_state.get("ha_nav_guest_top", "Chat")
-                    _gidx = _guest_top.index(_prev) if _prev in _guest_top else 0
-                st.radio(
-                    "App section",
-                    list(_guest_top),
-                    index=_gidx,
-                    format_func=lambda s: _section_nav_label(lang, s),
-                    label_visibility="collapsed",
-                    key="ha_nav_guest_top",
-                    on_change=_on_guest_top_nav,
-                    horizontal=True,
-                )
+                with st.container(key="ha_sidebar_guest_main"):
+                    with st.container(key="ha_sidebar_guest_nav"):
+                        _guest_top = ("Chat", "Profile")
+                        if st.session_state.active_page in _guest_top:
+                            _gidx = _guest_top.index(st.session_state.active_page)
+                        else:
+                            # On Login: keep last Chat/Profile in the radio (key ``ha_nav_guest_top``)
+                            _prev = st.session_state.get("ha_nav_guest_top", "Chat")
+                            _gidx = _guest_top.index(_prev) if _prev in _guest_top else 0
+                        st.radio(
+                            "App section",
+                            list(_guest_top),
+                            index=_gidx,
+                            format_func=lambda s: _section_nav_label(lang, s),
+                            label_visibility="collapsed",
+                            key="ha_nav_guest_top",
+                            on_change=_on_guest_top_nav,
+                        )
 
-            st.divider()
+                    st.divider()
 
-            langs = {"en": "English", "tr": "Türkçe"}
-            new_lang_sidebar = st.selectbox(
-                "Language / Dil",
-                options=list(langs.keys()),
-                format_func=lambda x: langs[x],
-                index=list(langs.keys()).index(lang),
-                key="language_selector_sidebar",
-                label_visibility="collapsed",
-            )
-            if new_lang_sidebar != lang:
-                st.session_state.language = new_lang_sidebar
-                st.rerun()
+                    langs = {"en": "English", "tr": "Türkçe"}
+                    new_lang_sidebar = st.selectbox(
+                        "Language / Dil",
+                        options=list(langs.keys()),
+                        format_func=lambda x: langs[x],
+                        index=list(langs.keys()).index(lang),
+                        key="language_selector_sidebar",
+                        label_visibility="collapsed",
+                    )
+                    if new_lang_sidebar != lang:
+                        st.session_state.language = new_lang_sidebar
+                        st.rerun()
 
             if not st.session_state.is_logged_in:
                 import html as _html
 
-                with st.container(key="ha_sidebar_login_row"):
+                st.markdown(
+                    '<div class="ha-sidebar-flex-gap" aria-hidden="true"></div>',
+                    unsafe_allow_html=True,
+                )
+                with st.container(key="ha_sidebar_login_footer"):
                     st.markdown(
                         (
                             '<div class="ha-sidebar-login-card">'
@@ -271,15 +384,6 @@ def run() -> None:
                     ):
                         st.session_state.active_page = "Login"
                         st.rerun()
-
-            if st.session_state.is_logged_in:
-                if st.button(
-                    get_string(lang, "logout"),
-                    use_container_width=True,
-                    icon=":material/logout:",
-                    key="ha_sidebar_logout",
-                ):
-                    _logout()
 
     selected_section = st.session_state.get("active_page", "Chat")
 
