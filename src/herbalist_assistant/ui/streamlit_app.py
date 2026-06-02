@@ -360,20 +360,14 @@ def run() -> None:
                         st.rerun()
 
             if not st.session_state.is_logged_in:
-                import html as _html
-
-                st.markdown(
-                    '<div class="ha-sidebar-flex-gap" aria-hidden="true"></div>',
-                    unsafe_allow_html=True,
-                )
                 with st.container(key="ha_sidebar_login_footer"):
                     st.markdown(
-                        (
-                            '<div class="ha-sidebar-login-card">'
-                            f'<p class="ha-sidebar-login-title">{_html.escape(get_string(lang, "sidebar_login_title"))}</p>'
-                            f'<p class="ha-sidebar-login-hint">{_html.escape(get_string(lang, "sidebar_login_hint"))}</p>'
-                            "</div>"
-                        ),
+                        f"""
+                        <div class="ha-sidebar-login-text-block">
+                            <div class="ha-sidebar-login-title">{get_string(lang, "sidebar_login_title")}</div>
+                            <div class="ha-sidebar-login-hint">{get_string(lang, "sidebar_login_hint")}</div>
+                        </div>
+                        """,
                         unsafe_allow_html=True,
                     )
                     if st.button(

@@ -299,7 +299,6 @@ def _render_auth_screen() -> None:
                                         "Remember-me cookie write failed",
                                         exc_info=True,
                                     )
-                            st.success("Login successful.")
                             # Streamlit'in cookie set/delete komutunu tarayıcıya
                             # iletmesi için kısa bir yumuşatma. ``st.rerun()``
                             # mevcut run'ı kestiğinde queued mesajların flush
