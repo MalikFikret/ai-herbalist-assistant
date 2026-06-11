@@ -16,6 +16,7 @@ from herbalist_assistant.graph.nodes.direct_answer import direct_answer_node
 from herbalist_assistant.graph.nodes.grading import (
     _route_after_grading,
     _route_after_hallucination,
+    _route_after_web_search,
     answer_relevance_node,
     grade_documents_node,
     hallucination_grader_node,
@@ -28,6 +29,7 @@ from herbalist_assistant.graph.nodes.web_search import web_search_node
 __all__ = [
     "_route_after_grading",
     "_route_after_hallucination",
+    "_route_after_web_search",
     "_route_from_router",
     "answer_relevance_node",
     "direct_answer_node",

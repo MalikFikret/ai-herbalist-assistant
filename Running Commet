@@ -1,4 +1,10 @@
 # Run the application
+python run_app.py
+
+# Start Langgraph Studio
+langgraph dev
+
+# Run the streamlit app
 streamlit run src/app.py --server.address 0.0.0.0 --server.port 8502
 
 # Run the evaluation for English

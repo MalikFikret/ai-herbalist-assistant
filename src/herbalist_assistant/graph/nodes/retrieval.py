@@ -1,8 +1,10 @@
 """Query expansion + vector retrieval node.
 
-Expands the user's question into language-prioritized search queries and runs
-them against the Chroma retriever, merging and de-duping the resulting
-documents before they hit the CRAG grader.
+FIX (v2):
+  - Primary query limit increased 3 → 4 (richer expansion pool).
+  - candidate_docs cap increased 10 → 12 (grader still caps at 6,
+    but the input pool is now wider after increasing RETRIEVER_K to 5).
+  - Added explicit logging of expanded queries for easier debugging.
 """
 
 from __future__ import annotations
@@ -26,36 +28,42 @@ from herbalist_assistant.graph.state import AgentState
 
 _logger = logging.getLogger(__name__)
 
+# ── Tuning knobs ──────────────────────────────────────────────────────────────
+# FIX: was 3 primary + 2 fallback; now 4 primary + 3 fallback = richer pool
+_PRIMARY_QUERY_LIMIT  = 4
+_FALLBACK_QUERY_LIMIT = 3
+# FIX: cap before passing to grader (grader itself caps at _MAX_GRADE_DOCS=6)
+_CANDIDATE_DOC_CAP = 12   # was 10
+# ─────────────────────────────────────────────────────────────────────────────
+
 
 EXPANSION_SYSTEM = """You generate retrieval rewrites for a herbal health assistant.
 
 If the user's current question is a follow-up that contains pronouns or vague
-references (it / this / that / the tea / the herb), USE the recent conversation
-turns to resolve the referent before rewriting. For example, if the user asked
-about chamomile earlier and now asks "how do I prepare it?", rewrite the three
-queries around chamomile preparation, not a generic preparation query.
+references (it / this / that / the tea / the herb / onu / bunu / şunu / o çayı),
+USE the recent conversation turns to resolve the referent before rewriting.
+For example, if the user asked about chamomile earlier and now asks
+"how do I prepare it?", rewrite the queries around chamomile preparation,
+not a generic preparation query.
 
 When a user profile is provided, incorporate medically relevant profile details
-(e.g., age, allergies, conditions, medications) into the search intent only
-when they are relevant to the current question.
+(e.g., age, allergies, conditions) into the search intent only when relevant.
 
 LANGUAGE POLICY (VERY IMPORTANT):
 - Detect the language of the CURRENT user question.
-- The search system must prioritize that same language first.
 - Generate primary queries in the same language as the current question.
-- You may add fallback cross-language queries only when they could improve
-  recall (for example, English scientific terms), but never replace the
-  primary-language queries.
+- You may add fallback cross-language queries (e.g. English scientific names
+  for Turkish questions) only when they could improve recall — never replace
+  the primary-language queries with them.
 
 Produce concise, DISTINCT search queries that preserve the same user intent
 while varying terminology. Use botanical, scientific, and traditional phrasing
-where appropriate. If only 1-2 high-quality rewrites are appropriate, return
-fewer queries.
+where appropriate.
 
 Return only JSON:
 {
-  "primary_queries": ["same-language query 1", "same-language query 2", "..."],
-  "fallback_queries": ["optional cross-language query 1", "..."]
+  "primary_queries":  ["same-language query 1", "same-language query 2", "same-language query 3", "same-language query 4"],
+  "fallback_queries": ["optional cross-language query 1", "optional cross-language query 2"]
 }
 
 Backward-compatible format is also accepted:
@@ -79,8 +87,16 @@ def _unique_queries(items: list[object], *, limit: int, seen: set[str]) -> list[
 def _extract_prioritized_queries(raw: str, fallback_question: str) -> list[str]:
     """Parse same-language-first queries from model output, with safe fallback."""
     try:
-        data = json.loads(raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip())
+        cleaned = (
+            raw.strip()
+            .removeprefix("```json")
+            .removeprefix("```")
+            .removesuffix("```")
+            .strip()
+        )
+        data = json.loads(cleaned)
     except Exception:
+        _logger.warning("Query expansion: JSON parse failed; using original question")
         return [fallback_question]
 
     if not isinstance(data, dict):
@@ -91,16 +107,23 @@ def _extract_prioritized_queries(raw: str, fallback_question: str) -> list[str]:
 
     primary_raw = data.get("primary_queries", [])
     if isinstance(primary_raw, list):
-        prioritized.extend(_unique_queries(primary_raw, limit=3, seen=seen))
+        prioritized.extend(
+            _unique_queries(primary_raw, limit=_PRIMARY_QUERY_LIMIT, seen=seen)
+        )
 
     fallback_raw = data.get("fallback_queries", [])
-    if isinstance(fallback_raw, list) and len(prioritized) < 5:
-        prioritized.extend(_unique_queries(fallback_raw, limit=5 - len(prioritized), seen=seen))
+    remaining = _PRIMARY_QUERY_LIMIT + _FALLBACK_QUERY_LIMIT - len(prioritized)
+    if isinstance(fallback_raw, list) and remaining > 0:
+        prioritized.extend(
+            _unique_queries(fallback_raw, limit=remaining, seen=seen)
+        )
 
-    # Backward compatibility with older prompt shape.
+    # Backward compatibility with older prompt shape
     legacy_raw = data.get("expanded_queries", [])
     if isinstance(legacy_raw, list) and not prioritized:
-        prioritized.extend(_unique_queries(legacy_raw, limit=3, seen=seen))
+        prioritized.extend(
+            _unique_queries(legacy_raw, limit=_PRIMARY_QUERY_LIMIT, seen=seen)
+        )
 
     return prioritized or [fallback_question]
 
@@ -145,16 +168,28 @@ def expand_and_retrieve_node(state: AgentState) -> AgentState:
         _logger.exception("Query expansion failed; falling back to original question only")
         expanded = [question]
 
+    _logger.info(
+        "expand_and_retrieve_node: %d expanded queries: %s",
+        len(expanded),
+        expanded,
+    )
+
     docs: list[Document] = []
     retriever = _retriever()
     for query in expanded:
         try:
             batch = retriever.invoke(query)
+            _logger.debug("Query %r → %d docs", query, len(batch) if batch else 0)
         except Exception:
             _logger.exception("Retriever.invoke failed for query=%r", query)
             continue
         if batch:
             docs.extend(batch)
 
-    candidate_docs = _dedupe_documents(docs)[:10]
+    candidate_docs = _dedupe_documents(docs)[:_CANDIDATE_DOC_CAP]
+    _logger.info(
+        "expand_and_retrieve_node: %d unique candidate docs (cap=%d)",
+        len(candidate_docs),
+        _CANDIDATE_DOC_CAP,
+    )
     return {"expanded_queries": expanded, "candidate_docs": candidate_docs}

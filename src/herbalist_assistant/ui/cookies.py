@@ -32,31 +32,25 @@ _logger = logging.getLogger("herbalist_assistant.ui.cookies")
 _REMEMBER_COOKIE_NAME = "ha_remember"
 _REMEMBER_TTL_DAYS = 30
 
+# Generated once per process. If HA_REMEMBER_SECRET is not set, "remember me"
+# sessions expire on app restart — an acceptable trade-off vs. using GROQ_API_KEY.
+_EPHEMERAL_SECRET: bytes = secrets.token_bytes(32)
+
 
 def _remember_secret() -> bytes:
-    """Stable per-deployment secret used to sign remember tokens.
+    """Return the secret used to sign remember-me tokens.
 
-    Production deployments should set ``HA_REMEMBER_SECRET``. For local dev we
-    fall back to a hash of the admin password material so the secret stays
-    consistent across reloads of the same process and machine.
+    Priority:
+    1. ``HA_REMEMBER_SECRET`` env var  — stable across restarts (recommended).
+    2. ``_EPHEMERAL_SECRET``           — random bytes generated at startup.
+       Tokens remain valid for the lifetime of the process only; "remember me"
+       sessions expire on app restart. This is intentional: it avoids tying
+       cookie security to GROQ_API_KEY or any other unrelated credential.
     """
-    # Lazy import to break circular dependency with auth module.
-    from .auth import (
-        ADMIN_USERNAME,
-        _ADMIN_DEFAULT_PASSWORD,
-        _ADMIN_PASSWORD_ENV,
-        _ADMIN_PASSWORD_HASH_ENV,
-    )
-
     env_secret = os.environ.get("HA_REMEMBER_SECRET", "").strip()
     if env_secret:
         return env_secret.encode("utf-8")
-    seed = (
-        ADMIN_USERNAME
-        + "|"
-        + (_ADMIN_PASSWORD_HASH_ENV or _ADMIN_PASSWORD_ENV or _ADMIN_DEFAULT_PASSWORD)
-    )
-    return hashlib.sha256(seed.encode("utf-8")).digest()
+    return _EPHEMERAL_SECRET
 
 
 def _make_remember_token(username: str, ttl_days: int = _REMEMBER_TTL_DAYS) -> str:

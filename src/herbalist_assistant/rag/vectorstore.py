@@ -69,12 +69,16 @@ def load_or_build_vectorstore(
 
 def delete_chunks_for_pdf(vectorstore: Chroma, filename: str) -> None:
     """Remove all embedded chunks belonging to ``filename``."""
-    collection = vectorstore._collection
-    collection.delete(where={PDF_FILENAME_METADATA_KEY: filename})
+    # FIX (Risk-19): use public API instead of vectorstore._collection (private).
+    # Get IDs first, then delete — Chroma.delete() only accepts IDs, not where.
+    result = vectorstore.get(where={PDF_FILENAME_METADATA_KEY: filename}, include=[])
+    ids_to_delete = result.get("ids") or []
+    if ids_to_delete:
+        vectorstore.delete(ids=ids_to_delete)
 
     # Legacy rows may only have LangChain's ``source`` path metadata.
     try:
-        result = collection.get(include=["metadatas"])
+        result = vectorstore.get(include=["metadatas"])
     except Exception:
         return
     ids_to_drop: list[str] = []
@@ -90,7 +94,7 @@ def delete_chunks_for_pdf(vectorstore: Chroma, filename: str) -> None:
         if source and Path(str(source)).name == filename:
             ids_to_drop.append(doc_id)
     if ids_to_drop:
-        collection.delete(ids=ids_to_drop)
+        vectorstore.delete(ids=ids_to_drop)
 
 
 def _chunk_counts_by_filename(chunks) -> dict[str, int]:
@@ -149,7 +153,8 @@ def _index_single_pdf(
 def _discover_indexed_filenames(vectorstore: Chroma) -> set[str]:
     """Infer indexed PDF basenames from stored chunk metadata."""
     try:
-        result = vectorstore._collection.get(include=["metadatas"])
+        # FIX (Risk-19): use public API instead of vectorstore._collection (private).
+        result = vectorstore.get(include=["metadatas"])
     except Exception:
         return set()
     metadatas = result.get("metadatas") or []
@@ -276,7 +281,8 @@ def rebuild_manifest_after_full_index(
     vectorstore = open_vectorstore(persist_dir=persist_dir, embeddings=embeddings)
     counts: dict[str, int] = {}
     try:
-        result = vectorstore._collection.get(include=["metadatas"])
+        # FIX (Risk-19): use public API instead of vectorstore._collection (private).
+        result = vectorstore.get(include=["metadatas"])
         for meta in result.get("metadatas") or []:
             if not meta:
                 continue

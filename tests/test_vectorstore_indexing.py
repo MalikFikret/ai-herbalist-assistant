@@ -47,8 +47,14 @@ def test_load_pdf_document_tags_filename(tmp_path: Path, monkeypatch):
 
 def test_delete_chunks_for_pdf_uses_metadata_key():
     store = MagicMock()
+    store.get.side_effect = [
+        {"ids": ["id1"]},
+        {"ids": ["id2"], "metadatas": [{"source": "/path/to/herbs.pdf"}]}
+    ]
     delete_chunks_for_pdf(store, "herbs.pdf")
-    store._collection.delete.assert_called_once_with(where={"pdf_filename": "herbs.pdf"})
+    store.get.assert_any_call(where={"pdf_filename": "herbs.pdf"}, include=[])
+    store.delete.assert_any_call(ids=["id1"])
+    store.delete.assert_any_call(ids=["id2"])
 
 
 def test_sync_skips_unchanged_and_indexes_new(tmp_path: Path, monkeypatch):

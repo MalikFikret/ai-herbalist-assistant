@@ -50,7 +50,7 @@ from herbalist_assistant.llm.groq import get_groq_api_key  # noqa: E402
 # ---------------------------------------------------------------------------
 DATASET_PATH = _REPO_ROOT / "eval_dataset.json"
 REPORTS_DIR = _REPO_ROOT / "evaluation_reports"
-JUDGE_MODEL = "gemini-1.5-flash-latest"
+JUDGE_MODEL = "gemini-2.0-flash"
 # Per-invocation timeout in seconds for the graph and judge calls.
 GRAPH_TIMEOUT_SECONDS = 180
 JUDGE_TIMEOUT_SECONDS = 60

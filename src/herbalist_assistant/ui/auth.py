@@ -2,6 +2,10 @@
 
 Handles admin credential verification, user login/registration,
 password hashing (PBKDF2-SHA256), and session state initialization.
+
+FIX (v2): DEFAULT_MODEL changed from "gemini-2.5-flash" → "llama-3.1-8b-instant"
+          Groq is always available via GROQ_API_KEY; Gemini requires a separate
+          key that many deployments may not have, causing silent startup failures.
 """
 
 import hashlib
@@ -25,33 +29,28 @@ from .state import start_new_chat
 
 _logger = logging.getLogger("herbalist_assistant.ui.auth")
 
-# Admin credentials are sourced from environment variables so they are NOT
-# committed in source. Supported variables (first match wins):
-#   HA_ADMIN_USERNAME          - custom admin username (default: "admin")
-#   HA_ADMIN_PASSWORD_HASH +
-#   HA_ADMIN_PASSWORD_SALT     - PBKDF2-SHA256 hash (hex) and salt (hex)
-#                                -- most secure, recommended for production
-#   HA_ADMIN_PASSWORD          - plaintext fallback, hashed in-memory only
-#
-# If NONE of these are set, we fall back to the legacy dev default ("1234")
-# and log a loud warning. Never leave this unset in a deployment.
 ADMIN_USERNAME = os.environ.get("HA_ADMIN_USERNAME", "admin").strip() or "admin"
 _ADMIN_PASSWORD_HASH_ENV = os.environ.get("HA_ADMIN_PASSWORD_HASH", "").strip()
 _ADMIN_PASSWORD_SALT_ENV = os.environ.get("HA_ADMIN_PASSWORD_SALT", "").strip()
 _ADMIN_PASSWORD_ENV = os.environ.get("HA_ADMIN_PASSWORD", "")
-_ADMIN_DEFAULT_PASSWORD = "1234"
-_ADMIN_DEFAULT_WARNING_EMITTED = False
 _ADMIN_USERNAME_SETTING_KEY = "admin_username"
 _ADMIN_PASSWORD_HASH_SETTING_KEY = "admin_password_hash"
 _ADMIN_PASSWORD_SALT_SETTING_KEY = "admin_password_salt"
 
+# ── Model configuration ───────────────────────────────────────────────────────
+# FIX: Groq models listed first — they use GROQ_API_KEY which is the most
+# commonly configured key. Gemini / DeepSeek remain available but are opt-in.
+# FIX: DEFAULT_MODEL changed from "gemini-2.5-flash" to "llama-3.1-8b-instant"
+#      so the app works out of the box with only GROQ_API_KEY set.
 AVAILABLE_MODELS: List[str] = [
-    "llama-3.1-8b-instant",
-    "llama-3.3-70b-versatile",
-    "gemini-2.5-flash",
-    "deepseek-chat",
+    "llama-3.1-8b-instant",        # Groq  — fast, free tier
+    "llama-3.3-70b-versatile",     # Groq  — high quality
+    "gemini-2.5-flash",            # Google — requires GEMINI_API_KEY
+    "deepseek-chat",               # DeepSeek — requires DEEPSEEK_API_KEY
 ]
-DEFAULT_MODEL = "gemini-2.5-flash"
+DEFAULT_MODEL = "llama-3.3-70b-versatile"   # ← was "gemini-2.5-flash"
+# ─────────────────────────────────────────────────────────────────────────────
+
 AVAILABLE_WEB_SEARCH_PROVIDERS: List[str] = ["Tavily", "DuckDuckGo"]
 DEFAULT_WEB_SEARCH_PROVIDER = "Tavily"
 
@@ -96,10 +95,8 @@ def _register_user(username: str, password: str, confirm_password: str) -> str:
     admin_username = _load_runtime_admin_credentials()["username"]
     if username == admin_username:
         return "This username is reserved."
-
     if db_repository.user_exists(username):
         return "User already exists."
-
     salt = secrets.token_hex(16)
     created = db_repository.create_user(
         username=username,
@@ -123,7 +120,6 @@ def _reset_user_password(username: str, new_password: str, confirm_password: str
     admin_username = _load_runtime_admin_credentials()["username"]
     if username == admin_username:
         return "Admin password reset is disabled in this screen."
-
     salt = secrets.token_hex(16)
     updated = db_repository.reset_user_password(
         username=username,
@@ -132,68 +128,46 @@ def _reset_user_password(username: str, new_password: str, confirm_password: str
     )
     if not updated:
         return "User not found."
-    # Eğer kullanıcı daha önce Remember me ile şifresini hatırlatmışsa,
-    # eski (artık geçersiz) entry'yi temizliyoruz. Yeni şifreyi otomatik
-    # KAYDETMİYORUZ — bu davranış login formundaki Remember me'ye bağlı.
     _forget_remembered_password(username)
     return "Password reset successful. You can now log in."
 
 
 def _verify_admin_password(password: str) -> bool:
-    """Verify the admin password against the most secure source available.
-
-    Order of precedence:
-      1. HA_ADMIN_PASSWORD_HASH + HA_ADMIN_PASSWORD_SALT (PBKDF2-SHA256).
-      2. HA_ADMIN_PASSWORD (plaintext in env, compared with constant time).
-      3. Hardcoded dev default "1234" (with a WARNING log).
-    """
-    global _ADMIN_DEFAULT_WARNING_EMITTED
-
     if _ADMIN_PASSWORD_HASH_ENV and _ADMIN_PASSWORD_SALT_ENV:
         expected = _ADMIN_PASSWORD_HASH_ENV
         actual = _hash_password(password, _ADMIN_PASSWORD_SALT_ENV)
         return secrets.compare_digest(expected, actual)
-
     if _ADMIN_PASSWORD_ENV:
         return secrets.compare_digest(_ADMIN_PASSWORD_ENV, password)
-
     runtime_creds = _load_runtime_admin_credentials()
     runtime_hash = runtime_creds.get("password_hash", "")
     runtime_salt = runtime_creds.get("salt", "")
     if runtime_hash and runtime_salt:
         actual = _hash_password(password, runtime_salt)
         return secrets.compare_digest(runtime_hash, actual)
-
-    if not _ADMIN_DEFAULT_WARNING_EMITTED:
-        _logger.warning(
-            "Admin is using the insecure DEFAULT password. "
-            "Set HA_ADMIN_PASSWORD (or HA_ADMIN_PASSWORD_HASH + "
-            "HA_ADMIN_PASSWORD_SALT) in your environment before deploying."
-        )
-        _ADMIN_DEFAULT_WARNING_EMITTED = True
-    return secrets.compare_digest(_ADMIN_DEFAULT_PASSWORD, password)
+    raise RuntimeError(
+        "No admin password configured. "
+        "Run `python scripts/generate_admin_password_hash.py` and set "
+        "HA_ADMIN_PASSWORD_HASH + HA_ADMIN_PASSWORD_SALT in your .env file."
+    )
 
 
 def _authenticate_user(username: str, password: str) -> Dict[str, str]:
     username = username.strip()
     if not username or not password:
         return {"status": "error", "message": "Username and password are required."}
-
     admin_username = _load_runtime_admin_credentials()["username"]
     if username == admin_username:
         if _verify_admin_password(password):
             return {"status": "ok", "role": "admin"}
         return {"status": "error", "message": "Wrong password."}
-
     record = db_repository.get_user_auth(username)
     if not record:
         return {"status": "error", "message": "User not found."}
-
     password_hash = record.get("password_hash", "")
     salt = record.get("salt", "")
     if not password_hash or not salt or not _verify_password(password, password_hash, salt):
         return {"status": "error", "message": "Wrong password."}
-
     return {"status": "ok", "role": record.get("role", "user")}
 
 
@@ -209,6 +183,7 @@ def _init_auth_state() -> None:
     if "selected_model" not in st.session_state:
         st.session_state.selected_model = DEFAULT_MODEL
     elif st.session_state.selected_model not in AVAILABLE_MODELS:
+        # Reset any stale model selection (e.g. after upgrading) to the safe default
         st.session_state.selected_model = DEFAULT_MODEL
     if "web_search_provider" not in st.session_state:
         st.session_state.web_search_provider = DEFAULT_WEB_SEARCH_PROVIDER
@@ -246,7 +221,6 @@ def _logout() -> None:
     username = st.session_state.get("username", "").strip()
     role = st.session_state.get("role", "user")
     if username and role == "user":
-        # Ensure next login starts in a fresh chat for the user.
         start_new_chat(username)
     cookie_mgr = _get_cookie_manager()
     cookie_deleted = False
@@ -257,25 +231,16 @@ def _logout() -> None:
         except Exception:
             _logger.debug("Remember-me cookie delete failed", exc_info=True)
     st.session_state.clear()
-    # Logout sonrası Misafir Chat yerine doğrudan Login ekranı açılsın.
     st.session_state["active_page"] = "Login"
     st.session_state["auth_mode"] = "Login"
-    # Bu session için auto-login'i kapat: cookie henüz tarayıcıdan silinmemiş
-    # olsa bile kullanıcı çıkış yapmayı seçtiği için tekrar oturum açılmasın.
     st.session_state["ha_remember_consumed"] = True
-    # Cookie delete komutunun WebSocket üzerinden tarayıcıya iletilmesi için
-    # kısa süre bekle (Login set/delete'le aynı race condition'ı önler).
     if cookie_deleted:
         time.sleep(0.4)
     st.rerun()
 
 
 def _try_auto_login_from_cookie() -> None:
-    """If a valid HMAC-signed remember cookie is present, log the user in.
-
-    Runs once per Streamlit session: after a successful auto-login we set
-    ``ha_remember_consumed`` so subsequent reruns skip the cookie roundtrip.
-    """
+    """If a valid HMAC-signed remember cookie is present, log the user in."""
     from .cookies import _verify_remember_token
 
     if st.session_state.get("is_logged_in"):
@@ -285,28 +250,19 @@ def _try_auto_login_from_cookie() -> None:
     cookie_mgr = _get_cookie_manager()
     if cookie_mgr is None:
         return
-
-    # Track cookie check attempts to prevent infinite iframe reruns on startup
     if "ha_cookie_check_attempts" not in st.session_state:
         st.session_state.ha_cookie_check_attempts = 0
-
     try:
         token = cookie_mgr.get(cookie=_REMEMBER_COOKIE_NAME)
     except Exception:
         _logger.debug("Remember-me cookie read failed", exc_info=True)
         st.session_state["ha_remember_consumed"] = True
         return
-
     st.session_state.ha_cookie_check_attempts += 1
-
-    # The cookie manager returns None on the first run before the JS round-trip
-    # completes; mark consumed only when we actually saw a token (or the cookie
-    # is conclusively absent on a later rerun).
     if not token:
         if st.session_state.ha_cookie_check_attempts > 1:
             st.session_state["ha_remember_consumed"] = True
         return
-
     username = _verify_remember_token(str(token))
     if not username:
         try:
@@ -325,13 +281,10 @@ def _try_auto_login_from_cookie() -> None:
         return
     st.session_state.is_logged_in = True
     st.session_state.username = username
-    st.session_state.role = (
-        "admin" if username == ADMIN_USERNAME else "user"
-    )
+    st.session_state.role = "admin" if username == ADMIN_USERNAME else "user"
     st.session_state.user_profile = profile
     if st.session_state.role == "user":
         from .pages.chat import _sync_conversations_to_session
-
         start_new_chat(username)
         _sync_conversations_to_session(username)
     st.session_state.active_page = (

@@ -66,7 +66,6 @@ from .auth import (  # noqa: E402, F811
     AVAILABLE_WEB_SEARCH_PROVIDERS,
     DEFAULT_MODEL,
     DEFAULT_WEB_SEARCH_PROVIDER,
-    _ADMIN_DEFAULT_PASSWORD,
     _ADMIN_PASSWORD_ENV,
     _ADMIN_PASSWORD_HASH_ENV,
     _ADMIN_PASSWORD_SALT_ENV,
@@ -87,6 +86,60 @@ from .components import (  # noqa: E402, F811
 from .pages.chat import (  # noqa: E402, F811
     _extract_sources_from_docs,
 )
+
+
+def _check_api_keys(lang: str) -> None:
+    """Fix #1: Validate required API keys at startup and show clear warnings.
+
+    Runs once per session (guarded by a session_state flag). Missing keys are
+    surfaced immediately as st.warning banners so the operator knows exactly
+    what is wrong before a user tries to ask a question.
+
+    Key tiers
+    ─────────
+    CRITICAL  — app cannot answer ANY question without these.
+    WARNING   — app works but specific models / features are unavailable.
+    """
+    import os
+
+    if st.session_state.get("_api_keys_checked"):
+        return
+    st.session_state["_api_keys_checked"] = True
+
+    missing_critical: list[str] = []
+    missing_optional: list[str] = []
+
+    # ── CRITICAL: at least one LLM backend must be reachable ─────────────────
+    groq_ok = bool(os.getenv("GROQ_API_KEY", "").strip())
+    gemini_ok = bool(os.getenv("GEMINI_API_KEY", "").strip())
+    deepseek_ok = bool(os.getenv("DEEPSEEK_API_KEY", "").strip())
+
+    if not groq_ok:
+        missing_critical.append("GROQ_API_KEY (default LLM — llama-3.1-8b-instant)")
+    if not gemini_ok:
+        missing_optional.append("GEMINI_API_KEY (Gemini models unavailable)")
+    if not deepseek_ok:
+        missing_optional.append("DEEPSEEK_API_KEY (DeepSeek model unavailable)")
+
+    # ── WARNING: web search fallback will be limited ──────────────────────────
+    tavily_ok = bool(os.getenv("TAVILY_API_KEY", "").strip())
+    if not tavily_ok:
+        missing_optional.append("TAVILY_API_KEY (web search will use DuckDuckGo only)")
+
+    # ── Surface problems ──────────────────────────────────────────────────────
+    for key_desc in missing_critical:
+        st.error(
+            f"⛔ Missing API key: **{key_desc}**\n\n"
+            "Add it to your `.env` file and restart the app.",
+            icon="🔑",
+        )
+
+    for key_desc in missing_optional:
+        st.warning(
+            f"⚠️ Missing API key: **{key_desc}**\n\n"
+            "Add it to `.env` to enable this feature.",
+            icon="🔑",
+        )
 
 
 def _sidebar_placeholder_chat_titles(lang: str) -> set[str]:
@@ -198,6 +251,9 @@ def run() -> None:
     _inject_chat_layout_script(in_sidebar=False)
 
     lang = st.session_state.get("language", "en")
+
+    # Fix #1: validate API keys once per session and show banners if missing.
+    _check_api_keys(lang)
 
     if st.session_state.is_logged_in and st.session_state.role == "user":
         st.session_state.user_profile = _get_user_profile(st.session_state.username)

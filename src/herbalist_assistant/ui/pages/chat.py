@@ -1,5 +1,7 @@
 """Chat page: conversation UI, agent invocation, and message handling."""
 
+from langgraph_sdk import get_client
+
 import asyncio
 import html as _html
 import logging
@@ -27,10 +29,14 @@ from ..state import (
 _logger = logging.getLogger("herbalist_assistant.ui.pages.chat")
 
 # Maximum number of past messages we forward to the agent graph for memory.
-# Matches _MAX_HISTORY_MESSAGES in graph/extractors.py.
-_CHAT_HISTORY_LIMIT = 6
+# Fix #5: raised from 6 → 10 so follow-up references survive longer conversations.
+_CHAT_HISTORY_LIMIT = 10
 
 _AGENT_TIMEOUT_SEC = 120
+
+# Extended timeout used only during first-run warm-up (embedding download +
+# vectorstore build can take several minutes on a cold start).
+_WARMUP_TIMEOUT_SEC = 300
 
 
 def _truncate_chat_title(title: str, max_len: int = 34) -> str:
@@ -55,20 +61,23 @@ def _invoke_agent_with_timeout(
     payload: Dict[str, Any],
     timeout_sec: int = _AGENT_TIMEOUT_SEC,
 ) -> Dict[str, Any]:
-    """Run ``agent_graph_app.ainvoke`` under an asyncio timeout.
-
-    Uses the compiled graph's native async entrypoint, wrapped in
-    ``asyncio.wait_for`` so the UI never blocks forever. On timeout we
-    raise ``TimeoutError`` so the caller can render a user-friendly message.
-    """
-
-    # Lazy import to avoid triggering heavy LangChain module loads at
-    # import time (breaks test environments without full deps).
-    from herbalist_assistant.graph.advanced_graph import app as agent_graph_app
+    """Run agent via LangGraph Studio SDK Client under an asyncio timeout."""
 
     async def _runner() -> Dict[str, Any]:
+        # 1. Connect to the local LangGraph Studio server
+        client = get_client(url="http://127.0.0.1:2024")
+        
+        # 2. Create a thread to track the session context in the Studio UI
+        thread = await client.threads.create()
+        
+        # 3. Send the payload to the server and wait for the result
+        # Note: 'agent' is the graph name as defined in your langgraph.json file
         return await asyncio.wait_for(
-            agent_graph_app.ainvoke(payload),
+            client.runs.wait(
+                thread_id=thread["thread_id"],
+                assistant_id="agent",
+                input=payload
+            ),
             timeout=timeout_sec,
         )
 
@@ -80,7 +89,37 @@ def _invoke_agent_with_timeout(
         ) from exc
 
 
-def _collect_chat_history_for_agent() -> List[Dict[str, str]]:
+def _is_agent_warm() -> bool:
+    """Return True if the agent graph is already loaded in this session."""
+    return bool(st.session_state.get("_agent_warmed_up"))
+
+
+def _warm_up_agent(lang: str) -> None:
+    """Pre-load the embedding model and vectorstore before the first query.
+
+    Fix #2: instead of hitting the 120s timeout on the user's first real
+    question, we trigger the heavy imports once at chat-page load time with:
+      • A visible spinner so the user knows something is happening.
+      • A longer _WARMUP_TIMEOUT_SEC (300s) to survive slow first builds.
+      • A session-state flag so we never run this twice in the same session.
+    """
+    if _is_agent_warm():
+        return
+
+    warmup_msg = get_string(lang, "agent_warmup_msg")
+
+    try:
+        with st.spinner(warmup_msg):
+            from herbalist_assistant.graph.advanced_graph import app as _agent  # noqa: F401
+            from herbalist_assistant.graph.runtime import _retriever
+            _retriever()  # triggers embedding load + vectorstore build
+        st.session_state["_agent_warmed_up"] = True
+    except Exception:
+        # Non-fatal: the first real query will try again.
+        _logger.warning("Agent warm-up failed; will retry on first query", exc_info=True)
+
+
+
     """Return the last few chat turns, excluding the current (just-appended) user msg.
 
     The advanced graph uses this for conversational memory so follow-up
@@ -101,7 +140,34 @@ def _collect_chat_history_for_agent() -> List[Dict[str, str]]:
     ]
 
 
-def _dedupe_answer_lines(text: str) -> str:
+def _pending_question_is_stale(pending_q: str) -> bool:
+    """Return True if the pending question was already answered.
+
+    Fix #4: on browser refresh during agent processing, the pending question
+    survives in session state but the answer is already in the DB. We detect
+    this by checking whether the last assistant message was recorded AFTER
+    the last user message with the same content, making the pending entry safe
+    to discard without re-invoking the agent.
+    """
+    messages = st.session_state.get("messages", []) or []
+    # Find the last user message matching the pending question.
+    last_user_idx = None
+    for i, msg in enumerate(messages):
+        if msg.get("role") == "user" and msg.get("content", "").strip() == pending_q.strip():
+            last_user_idx = i
+
+    if last_user_idx is None:
+        return False  # question not in history yet → not stale
+
+    # Check whether an assistant message follows it.
+    for msg in messages[last_user_idx + 1:]:
+        if msg.get("role") == "assistant" and msg.get("content", "").strip():
+            return True  # already answered → stale
+
+    return False
+
+
+
     lines = [line.rstrip() for line in text.splitlines()]
     seen = set()
     result = []
@@ -154,6 +220,35 @@ def _extract_sources_from_docs(docs: List[Any]) -> List[Dict[str, Any]]:
         seen.add(key)
         structured.append({"kind": "pdf", "file": file_name, "page": page_num})
     return structured
+
+
+def _collect_chat_history_for_agent() -> List[Dict[str, str]]:
+    """Return the last _CHAT_HISTORY_LIMIT messages for the agent context.
+
+    Filters to user/assistant roles only and skips messages with empty content.
+    The current pending question is NOT included — it lives in ``question``.
+    """
+    messages = st.session_state.get("messages", []) or []
+    history = [
+        {"role": m["role"], "content": m["content"]}
+        for m in messages
+        if m.get("role") in ("user", "assistant") and m.get("content", "").strip()
+    ]
+    return history[-_CHAT_HISTORY_LIMIT:]
+
+
+def _dedupe_answer_lines(text: str) -> str:
+    """Remove consecutive duplicate lines from the answer text."""
+    if not text:
+        return text
+    lines = text.splitlines()
+    deduped: list[str] = []
+    prev = None
+    for line in lines:
+        if line != prev:
+            deduped.append(line)
+        prev = line
+    return "\n".join(deduped)
 
 
 def _generate_ai_response(user_input: str, profile: Dict[str, str]) -> tuple[str, List[Dict[str, Any]]]:
@@ -338,6 +433,10 @@ def _render_chat_page() -> None:
     username = _chat_owner_key()
     init_session_state(username)
     _sync_conversations_to_session(username)
+
+    # Fix #2: pre-load embedding model + vectorstore on first visit so the
+    # user's first real question doesn't hit the cold-start timeout.
+    _warm_up_agent(lang)
     chats = get_user_chat_summaries(username)
     active_chat_id = st.session_state.get("active_chat_id", "")
     active_chat_title = next(
@@ -415,6 +514,12 @@ def _render_chat_page() -> None:
     # keep ``st.status`` in the slot above the composer.
     _pending_agent_q = st.session_state.get("_agent_pending_question")
     if _pending_agent_q is not None:
+        # Fix #4: discard stale pending questions (e.g. after browser refresh
+        # during processing where the answer was already saved to the DB).
+        if _pending_question_is_stale(str(_pending_agent_q)):
+            _logger.info("Discarding stale pending question: %r", _pending_agent_q)
+            st.session_state.pop("_agent_pending_question", None)
+            st.rerun()
         with _agent_thinking_slot.container():
             try:
                 answer, sources = _generate_ai_response(
