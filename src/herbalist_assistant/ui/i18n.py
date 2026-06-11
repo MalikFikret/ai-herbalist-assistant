@@ -179,6 +179,12 @@ STRINGS: dict[str, dict[str, Any]] = {
         "feedback_log_question": "Question",
         "feedback_log_answer": "Answer",
         "feedback_log_sources": "Sources",
+        "admin_login_title": "Admin Portal",
+        "admin_login_subtitle": "Secure access for system administrators",
+        "admin_only_error": "Only administrators are permitted to log in on this page.",
+        "admin_credentials_error": "Invalid administrator credentials.",
+        "admin_login_not_allowed": "Admin login is not permitted on this page. Please use the Admin Login page.",
+        "auth_back_to_user_app": "Back to User App",
     },
     "tr": {
         "app_title": "AI Herbalist Assistant",

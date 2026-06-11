@@ -119,7 +119,7 @@ def _guest_auth_card_background_css() -> str:
             background-color: #f4f2ec !important;
             background-image: url("{uri}") !important;
             background-size: cover !important;
-            background-position: center center !important;
+            background-position: bottom center !important;
             background-repeat: no-repeat !important;
         }}
         .st-key-ha_auth_shell .ha-lux-welcome--hero-photo {{
@@ -170,7 +170,7 @@ def _chat_shell_background_uri_for_css() -> str:
 _GUEST_AUTH_CARD_SOLID_CSS = """
             .st-key-ha_auth_shell .st-key-ha_auth_card {
                 background-color: transparent !important;
-                min-height: min(28rem, 62vh) !important;
+                min-height: min(30rem, 66vh) !important;
             }
 """
 
@@ -237,6 +237,17 @@ _GUEST_AUTH_MOCKUP_CSS = """
             padding-top: 2.05rem !important;
         }
         @media (min-width: 901px) {
+            .st-key-ha_auth_shell .st-key-ha_auth_card {
+                height: 31.5rem !important;
+                min-height: 31.5rem !important;
+                max-height: 31.5rem !important;
+                overflow: hidden !important;
+            }
+            .st-key-ha_auth_shell .ha-lux-welcome--panel {
+                height: 31.5rem !important;
+                min-height: 31.5rem !important;
+                max-height: 31.5rem !important;
+            }
             .st-key-ha_auth_card
                 [data-testid="stHorizontalBlock"]
                 > [data-testid="column"]:nth-of-type(1):not(:has(.ha-lux-welcome--hero-photo)) {
@@ -253,6 +264,27 @@ _GUEST_AUTH_MOCKUP_CSS = """
                 > [data-testid="column"]:nth-of-type(2)
                 > div[data-testid="stVerticalBlock"] {
                 padding: 0.25rem 1.55rem 1.65rem 1.55rem !important;
+                height: 100% !important;
+                display: flex !important;
+                flex-direction: column !important;
+                justify-content: flex-start !important;
+            }
+            /* Position welcome panel text directly over illustration with text-shadow halo for premium legibility */
+            .st-key-ha_auth_shell .ha-lux-welcome--panel__inner {
+                max-width: 17.5rem !important;
+                transform: translateY(-3.2rem) !important;
+            }
+            .st-key-ha_auth_shell .ha-lux-welcome--panel__title {
+                text-shadow: 
+                    0 0 24px rgba(255, 255, 255, 0.98),
+                    0 0 12px rgba(255, 255, 255, 0.95),
+                    0 2px 4px rgba(255, 255, 255, 0.9) !important;
+            }
+            .st-key-ha_auth_shell .ha-lux-welcome--panel__tagline {
+                text-shadow: 
+                    0 0 24px rgba(255, 255, 255, 0.98),
+                    0 0 12px rgba(255, 255, 255, 0.95),
+                    0 1px 3px rgba(255, 255, 255, 0.9) !important;
             }
         }
         .st-key-ha_auth_shell .ha-lux-welcome--brand:not(.ha-lux-welcome--hero-photo) .ha-lux-welcome__inner {
@@ -290,7 +322,7 @@ _GUEST_AUTH_MOCKUP_CSS = """
             align-items: center !important;
             justify-content: center !important;
             width: 100% !important;
-            min-height: min(27.5rem, 60vh) !important;
+            min-height: min(29.5rem, 64vh) !important;
             margin: 0 !important;
             padding: 2.5rem 1.35rem 2rem 1.5rem !important;
             box-sizing: border-box !important;
@@ -761,19 +793,39 @@ def _sidebar_modern_herbal_css() -> str:
     # selectors (e.g. ::before); ::before/::after are scoped to the shell only.
     sb = (
         '[data-testid="stAppViewContainer"]:not(:has(.st-key-ha_auth_shell)) '
-        '[data-testid="stSidebar"]'
+        '[data-testid="stSidebar"]:not([aria-expanded="false"])'
+    )
+    sb_collapsed = (
+        '[data-testid="stAppViewContainer"]:not(:has(.st-key-ha_auth_shell)) '
+        '[data-testid="stSidebar"][aria-expanded="false"]'
     )
     surface = _sidebar_shell_surface_layers()
     botanical = _sidebar_botanical_texture_css(sb)
     return f"""
         [data-testid="stAppViewContainer"]:not(:has(.st-key-ha_auth_shell))
-            section[data-testid="stSidebar"],
+            section[data-testid="stSidebar"]:not([aria-expanded="false"]),
         [data-testid="stAppViewContainer"]:not(:has(.st-key-ha_auth_shell))
-            [data-testid="stSidebar"] {{
+            [data-testid="stSidebar"]:not([aria-expanded="false"]) {{
             flex: 0 0 var(--ha-sidebar-target-width, 17rem) !important;
             width: var(--ha-sidebar-target-width, 17rem) !important;
             min-width: var(--ha-sidebar-target-width, 17rem) !important;
             max-width: var(--ha-sidebar-target-width, 17rem) !important;
+        }}
+        [data-testid="stAppViewContainer"]:not(:has(.st-key-ha_auth_shell))
+            section[data-testid="stSidebar"][aria-expanded="false"],
+        [data-testid="stAppViewContainer"]:not(:has(.st-key-ha_auth_shell))
+            [data-testid="stSidebar"][aria-expanded="false"] {{
+            flex: 0 0 0px !important;
+            width: 0px !important;
+            min-width: 0px !important;
+            max-width: 0px !important;
+            border-right: none !important;
+            box-shadow: none !important;
+            background: transparent !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+            display: none !important;
+            visibility: hidden !important;
         }}
         {sb} {{
             position: relative !important;
@@ -789,6 +841,19 @@ def _sidebar_modern_herbal_css() -> str:
             width: var(--ha-sidebar-target-width, 17rem) !important;
             min-width: var(--ha-sidebar-target-width, 17rem) !important;
             max-width: var(--ha-sidebar-target-width, 17rem) !important;
+        }}
+        {sb_collapsed} {{
+            flex: 0 0 0px !important;
+            width: 0px !important;
+            min-width: 0px !important;
+            max-width: 0px !important;
+            border-right: none !important;
+            box-shadow: none !important;
+            background: transparent !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+            display: none !important;
+            visibility: hidden !important;
         }}
         {botanical}
         {sb} > * {{
@@ -812,11 +877,13 @@ def _sidebar_modern_herbal_css() -> str:
             margin: 0 0 1rem 0 !important;
         }}
         {sb}:has(.st-key-ha_sidebar_login_footer) {{
-            height: 100dvh !important;
-            max-height: 100dvh !important;
+            height: 100vh !important;
+            max-height: 100vh !important;
             overflow: hidden !important;
             display: flex !important;
             flex-direction: column !important;
+            padding-bottom: 0 !important;
+            margin-bottom: 0 !important;
         }}
         {sb}:has(.st-key-ha_sidebar_login_footer) > div {{
             flex: 1 1 auto !important;
@@ -824,6 +891,8 @@ def _sidebar_modern_herbal_css() -> str:
             display: flex !important;
             flex-direction: column !important;
             overflow: hidden !important;
+            padding-bottom: 0 !important;
+            margin-bottom: 0 !important;
         }}
         {sb}:has(.st-key-ha_sidebar_login_footer) [data-testid="stSidebarHeader"] {{
             flex: 0 0 auto !important;
@@ -836,16 +905,21 @@ def _sidebar_modern_herbal_css() -> str:
         }}
         {sb}:has(.st-key-ha_sidebar_login_footer) .block-container {{
             padding-top: 0.2rem !important;
-            padding-bottom: 0 !important;
+            padding-bottom: 230px !important;
+            margin-bottom: 0 !important;
             flex: 1 1 auto !important;
             min-height: 0 !important;
             display: flex !important;
             flex-direction: column !important;
-            overflow: hidden !important;
+            overflow-y: auto !important;
         }}
         {sb}:has(.st-key-ha_sidebar_login_footer) [data-testid="stSidebarContent"],
-        {sb}:has(.st-key-ha_sidebar_login_footer) [data-testid="stSidebarUserContent"] {{
+        {sb}:has(.st-key-ha_sidebar_login_footer) [data-testid="stSidebarContent"] > div,
+        {sb}:has(.st-key-ha_sidebar_login_footer) [data-testid="stSidebarUserContent"],
+        {sb}:has(.st-key-ha_sidebar_login_footer) [data-testid="stSidebarUserContent"] > div {{
             padding-top: 0 !important;
+            padding-bottom: 0 !important;
+            margin-bottom: 0 !important;
             flex: 1 1 auto !important;
             min-height: 0 !important;
             display: flex !important;
@@ -859,6 +933,8 @@ def _sidebar_modern_herbal_css() -> str:
             display: flex !important;
             flex-direction: column !important;
             overflow: hidden !important;
+            padding-bottom: 0 !important;
+            margin-bottom: 0 !important;
         }}
         {sb}:has(.st-key-ha_sidebar_login_footer)
             .block-container > [data-testid="stVerticalBlock"]
@@ -1035,54 +1111,88 @@ def _sidebar_modern_herbal_css() -> str:
         {sb}:has(.st-key-ha_sidebar_login_footer)
             [data-testid="stElementContainer"]:has(.st-key-ha_sidebar_login_footer),
         {sb}:has(.st-key-ha_sidebar_login_footer)
-            [data-testid="element-container"]:has(.st-key-ha_sidebar_login_footer) {{
-            margin-top: 0.85rem !important;
+            [data-testid="element-container"]:has(.st-key-ha_sidebar_login_footer),
+        {sb}:has(.st-key-ha_sidebar_login_footer) .st-key-ha_sidebar_login_footer {{
+            margin-top: auto !important;
+            margin-bottom: 0 !important;
+            padding-bottom: 0 !important;
             flex-shrink: 0 !important;
         }}
         {sb}:has(.st-key-ha_sidebar_login_footer) .st-key-ha_sidebar_login_footer
             [data-testid="stVerticalBlock"] {{
             display: flex !important;
             flex-direction: column !important;
-            gap: 0.85rem !important;
+            gap: 12px !important;
             align-items: stretch !important;
+            padding-bottom: 0 !important;
+            margin-bottom: 0 !important;
+            height: auto !important;
+            max-height: none !important;
+            min-height: 0 !important;
+            overflow: visible !important;
         }}
         {sb}:has(.st-key-ha_sidebar_login_footer) .st-key-ha_sidebar_login_footer
-            [data-testid="stElementContainer"] {{
+            [data-testid="stVerticalBlockBorderWrapper"] {{
+            height: auto !important;
+            max-height: none !important;
+            min-height: 0 !important;
+            overflow: visible !important;
+        }}
+        {sb}:has(.st-key-ha_sidebar_login_footer) .st-key-ha_sidebar_login_footer
+            [data-testid="stElementContainer"],
+        {sb}:has(.st-key-ha_sidebar_login_footer) .st-key-ha_sidebar_login_footer
+            [data-testid="element-container"] {{
             margin: 0 !important;
             padding: 0 !important;
             flex-shrink: 0 !important;
             position: relative !important;
+            height: auto !important;
+            max-height: none !important;
+            min-height: 0 !important;
+            overflow: visible !important;
         }}
         {sb}:has(.st-key-ha_sidebar_login_footer) .st-key-ha_sidebar_login_btn {{
-            margin-top: 0.15rem !important;
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
             padding-top: 0 !important;
+            padding-bottom: 0 !important;
+            width: 100% !important;
         }}
         .st-key-ha_sidebar_login_footer {{
-            position: relative !important;
+            position: absolute !important;
+            bottom: 12px !important;
+            left: 12px !important;
+            right: 12px !important;
             z-index: 12 !important;
-            margin-top: 0 !important;
+            margin-top: auto !important;
             flex-shrink: 0 !important;
-            background: linear-gradient(
-                180deg,
-                rgba(242, 235, 227, 0.72) 0%,
-                {_HA_SIDEBAR_BG} 28%,
-                {_HA_SIDEBAR_BG} 100%
-            ) !important;
-            border-top: 1px solid rgba(44, 48, 42, 0.1) !important;
-            border-radius: 18px 18px 0 0 !important;
-            backdrop-filter: blur(14px) saturate(1.08) !important;
-            -webkit-backdrop-filter: blur(14px) saturate(1.08) !important;
-            box-shadow: 0 -6px 24px rgba(38, 42, 36, 0.07) !important;
-            padding: 1rem 1rem 1rem !important;
-            gap: 0.85rem !important;
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 0 !important;
+            width: auto !important;
+            max-width: none !important;
+            height: auto !important;
+            max-height: none !important;
+            min-height: 0 !important;
+            margin-left: 0 !important;
+            margin-right: 0 !important;
+            box-sizing: border-box !important;
+            padding: 1.25rem !important;
+            margin-bottom: 0 !important;
+            overflow: visible !important;
+            background: #EBE3D8 !important;
+            border: 1px solid rgba(44, 48, 42, 0.05) !important;
+            border-radius: 20px !important;
+            box-shadow: 0 4px 20px rgba(60, 78, 58, 0.05), 0 2px 8px rgba(60, 78, 58, 0.03) !important;
         }}
         .ha-sidebar-login-hint {{
-            margin: 0 0 0.15rem 0 !important;
-            padding-bottom: 0.35rem !important;
+            margin: 0 !important;
+            padding: 0 !important;
         }}
         .st-key-ha_sidebar_login_btn,
         .st-key-ha_sidebar_login_btn [data-testid="stElementContainer"],
-        .st-key-ha_sidebar_login_btn [data-testid="element-container"] {{
+        .st-key-ha_sidebar_login_btn [data-testid="element-container"],
+        .st-key-ha_sidebar_login_btn button {{
             display: block !important;
             visibility: visible !important;
             opacity: 1 !important;
@@ -1090,14 +1200,45 @@ def _sidebar_modern_herbal_css() -> str:
             width: 100% !important;
             max-width: 100% !important;
             overflow: visible !important;
+            margin-bottom: 0 !important;
+            padding-bottom: 0 !important;
         }}
         .ha-sidebar-login-title {{
             color: {_HA_SAGE_DEEP} !important;
             -webkit-text-fill-color: {_HA_SAGE_DEEP} !important;
+            font-family: "Inter", system-ui, -apple-system, sans-serif !important;
+            font-size: 0.92rem !important;
+            font-weight: 600 !important;
+            line-height: 1.35 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            display: block !important;
+            text-align: left !important;
         }}
         .ha-sidebar-login-hint {{
             color: #6f7d6c !important;
             -webkit-text-fill-color: #6f7d6c !important;
+            font-family: "Inter", system-ui, -apple-system, sans-serif !important;
+            font-size: 0.76rem !important;
+            font-weight: 400 !important;
+            line-height: 1.45 !important;
+            margin: 0 0 24px 0 !important;
+            padding: 0 !important;
+            display: block !important;
+            text-align: left !important;
+        }}
+        .ha-sidebar-login-text-block {{
+            margin: 0 !important;
+            padding: 0 !important;
+            display: block !important;
+            text-align: left !important;
+            height: auto !important;
+        }}
+        .ha-sidebar-login-text-block {{
+            margin: 0 !important;
+            padding: 0 !important;
+            display: block !important;
+            text-align: left !important;
         }}
     """
 
@@ -1105,32 +1246,32 @@ def _sidebar_modern_herbal_css() -> str:
 def _sidebar_ensure_visible_css() -> str:
     """Force sidebar widgets/text visible (Streamlit theme + global button rules)."""
     return f"""
-        [data-testid="stSidebar"] [data-testid="stMarkdownContainer"],
-        [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
-        [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] span,
-        [data-testid="stSidebar"] .ha-sidebar-header,
-        [data-testid="stSidebar"] .ha-sidebar-header *:not(.ha-sidebar-header__eyebrow) {{
+        [data-testid="stSidebar"]:not([aria-expanded="false"]) [data-testid="stMarkdownContainer"],
+        [data-testid="stSidebar"]:not([aria-expanded="false"]) [data-testid="stMarkdownContainer"] p,
+        [data-testid="stSidebar"]:not([aria-expanded="false"]) [data-testid="stMarkdownContainer"] span,
+        [data-testid="stSidebar"]:not([aria-expanded="false"]) .ha-sidebar-header,
+        [data-testid="stSidebar"]:not([aria-expanded="false"]) .ha-sidebar-header *:not(.ha-sidebar-header__eyebrow) {{
             color: var(--ha-text) !important;
             -webkit-text-fill-color: var(--ha-text) !important;
             opacity: 1 !important;
             visibility: visible !important;
         }}
-        [data-testid="stSidebar"] .ha-sidebar-header__eyebrow {{
+        [data-testid="stSidebar"]:not([aria-expanded="false"]) .ha-sidebar-header__eyebrow {{
             display: flex !important;
             visibility: visible !important;
             opacity: 1 !important;
             color: #6a7568 !important;
             -webkit-text-fill-color: #6a7568 !important;
         }}
-        [data-testid="stSidebar"] [data-testid="element-container"]:has(button),
-        [data-testid="stSidebar"] [data-testid="stElementContainer"]:has(button) {{
+        [data-testid="stSidebar"]:not([aria-expanded="false"]) [data-testid="element-container"]:has(button),
+        [data-testid="stSidebar"]:not([aria-expanded="false"]) [data-testid="stElementContainer"]:has(button) {{
             width: 100% !important;
             max-width: 100% !important;
         }}
-        [data-testid="stSidebar"] [data-testid="stSelectbox"],
-        [data-testid="stSidebar"] [data-testid="stSelectbox"] > div,
-        [data-testid="stSidebar"] .st-key-ha_sidebar_guest_main,
-        [data-testid="stSidebar"] .st-key-ha_sidebar_login_footer {{
+        [data-testid="stSidebar"]:not([aria-expanded="false"]) [data-testid="stSelectbox"],
+        [data-testid="stSidebar"]:not([aria-expanded="false"]) [data-testid="stSelectbox"] > div,
+        [data-testid="stSidebar"]:not([aria-expanded="false"]) .st-key-ha_sidebar_guest_main,
+        [data-testid="stSidebar"]:not([aria-expanded="false"]) .st-key-ha_sidebar_login_footer {{
             opacity: 1 !important;
             visibility: visible !important;
         }}
@@ -1142,7 +1283,7 @@ def _nav_key_selectors(suffix: str = "") -> str:
     keys = ("ha_nav_guest_top", "ha_nav_user", "ha_nav_admin")
     tail = f" {suffix}" if suffix else ""
     return ",\n        ".join(
-        f'[data-testid="stSidebar"] .st-key-{key}{tail}' for key in keys
+        f'[data-testid="stSidebar"]:not([aria-expanded="false"]) .st-key-{key}{tail}' for key in keys
     )
 
 
@@ -1150,15 +1291,24 @@ def _sidebar_guest_main_shell_css() -> str:
     """Guest sidebar body only (do not style logged-in shell here)."""
     panel = (
         '[data-testid="stAppViewContainer"]:not(:has(.st-key-ha_auth_shell)) '
-        '[data-testid="stSidebar"]'
+        '[data-testid="stSidebar"]:not([aria-expanded="false"])'
     )
     gm = f"{panel} .st-key-ha_sidebar_guest_main"
     return f"""
         {gm} {{
-            flex: 0 0 auto !important;
+            flex: 1 1 auto !important;
+            display: flex !important;
+            flex-direction: column !important;
             margin-top: 0.1rem !important;
             margin-bottom: 0.75rem !important;
             padding: 0 0 0.2rem 0 !important;
+            min-height: 0 !important;
+        }}
+        {gm} > [data-testid="stVerticalBlock"] {{
+            flex: 1 1 auto !important;
+            display: flex !important;
+            flex-direction: column !important;
+            min-height: 0 !important;
         }}
         {panel} .st-key-ha_sidebar_guest_nav {{
             margin-bottom: 0.15rem !important;
@@ -1168,6 +1318,10 @@ def _sidebar_guest_main_shell_css() -> str:
         {gm} hr {{
             border-top-color: rgba(44, 48, 42, 0.1) !important;
             margin: 0.75rem 0 !important;
+        }}
+        {gm} [data-testid="stElementContainer"]:has(hr),
+        {gm} [data-testid="element-container"]:has(hr) {{
+            margin-top: auto !important;
         }}
         {gm} [data-testid="stSelectbox"] {{
             margin-bottom: 0.65rem !important;
@@ -1179,7 +1333,7 @@ def _sidebar_user_logged_in_css() -> str:
     """Logged-in sidebar shell: compact body + pinned footer."""
     panel = (
         '[data-testid="stAppViewContainer"]:not(:has(.st-key-ha_auth_shell)) '
-        '[data-testid="stSidebar"]'
+        '[data-testid="stSidebar"]:not([aria-expanded="false"])'
     )
     um = f"{panel} .st-key-ha_sidebar_user_main"
     body = f"{um} .st-key-ha_sidebar_user_body"
@@ -1251,7 +1405,7 @@ def _sidebar_user_compact_top_css() -> str:
     """Logged-in sidebar: trim Streamlit top chrome so NAVIGATION sits higher."""
     sb = (
         '[data-testid="stAppViewContainer"]:not(:has(.st-key-ha_auth_shell)) '
-        ':is(section[data-testid="stSidebar"], [data-testid="stSidebar"])'
+        ':is(section[data-testid="stSidebar"], [data-testid="stSidebar"]):not([aria-expanded="false"])'
         ':has(.st-key-ha_sidebar_user_main)'
     )
     return f"""
@@ -1305,7 +1459,7 @@ def _sidebar_user_flex_layout_css() -> str:
     """Logged-in sidebar: body scrolls, footer pinned; single scrollbar."""
     sb = (
         '[data-testid="stAppViewContainer"]:not(:has(.st-key-ha_auth_shell)) '
-        ':is(section[data-testid="stSidebar"], [data-testid="stSidebar"])'
+        ':is(section[data-testid="stSidebar"], [data-testid="stSidebar"]):not([aria-expanded="false"])'
         ':has(.st-key-ha_sidebar_user_main)'
     )
     um = f"{sb} .st-key-ha_sidebar_user_main"
@@ -1321,8 +1475,8 @@ def _sidebar_user_flex_layout_css() -> str:
     shell_sel = ",\n        ".join(shell_chain)
     return f"""
         {sb} {{
-            height: 100dvh !important;
-            max-height: 100dvh !important;
+            height: 100vh !important;
+            max-height: 100vh !important;
             overflow: hidden !important;
             display: flex !important;
             flex-direction: column !important;
@@ -1333,6 +1487,15 @@ def _sidebar_user_flex_layout_css() -> str:
             display: flex !important;
             flex-direction: column !important;
             overflow: hidden !important;
+        }}
+        {sb} [data-testid="stElementContainer"]:has(.st-key-ha_sidebar_user_main),
+        {sb} [data-testid="element-container"]:has(.st-key-ha_sidebar_user_main),
+        {sb} [data-testid="stElementContainer"]:has(.st-key-ha_sidebar_user_main) > div,
+        {sb} [data-testid="element-container"]:has(.st-key-ha_sidebar_user_main) > div {{
+            flex: 1 1 auto !important;
+            display: flex !important;
+            flex-direction: column !important;
+            min-height: 0 !important;
         }}
         {um} {{
             flex: 1 1 auto !important;
@@ -1358,62 +1521,100 @@ def _sidebar_user_flex_layout_css() -> str:
         {body} {{
             flex: 1 1 auto !important;
             min-height: 0 !important;
-            overflow-x: hidden !important;
-            overflow-y: auto !important;
+            display: flex !important;
+            flex-direction: column !important;
+            overflow: hidden !important;
             margin: 0 !important;
             padding: 0 0 0.35rem 0 !important;
         }}
-        {footer} {{
-            flex: 0 0 auto !important;
-            margin-top: auto !important;
-            padding: 0.5rem 0 max(0.7rem, env(safe-area-inset-bottom, 0px)) 0 !important;
-            border-top: 1px solid rgba(44, 48, 42, 0.1) !important;
-            background: linear-gradient(
-                180deg,
-                rgba(242, 235, 227, 0.5) 0%,
-                {_HA_SIDEBAR_BG} 55%
-            ) !important;
+        {sb} .st-key-ha_sidebar_chat_panel,
+        {sb} [data-testid="stElementContainer"]:has(.st-key-ha_sidebar_chat_panel),
+        {sb} [data-testid="element-container"]:has(.st-key-ha_sidebar_chat_panel),
+        {sb} [data-testid="stElementContainer"]:has(.st-key-ha_sidebar_chat_panel) > div,
+        {sb} [data-testid="element-container"]:has(.st-key-ha_sidebar_chat_panel) > div {{
+            flex: 1 1 auto !important;
             display: flex !important;
             flex-direction: column !important;
-            justify-content: flex-end !important;
+            min-height: 0 !important;
+            overflow: hidden !important;
+        }}
+        {sb} .st-key-ha_sidebar_chat_panel > div[data-testid="stVerticalBlock"],
+        {sb} .st-key-ha_sidebar_chat_panel [data-testid="stVerticalBlock"] {{
+            flex: 1 1 auto !important;
+            display: flex !important;
+            flex-direction: column !important;
+            min-height: 0 !important;
+            overflow: hidden !important;
+        }}
+        {sb} .st-key-ha_sidebar_chat_list,
+        {sb} [data-testid="stElementContainer"]:has(.st-key-ha_sidebar_chat_list),
+        {sb} [data-testid="element-container"]:has(.st-key-ha_sidebar_chat_list),
+        {sb} [data-testid="stElementContainer"]:has(.st-key-ha_sidebar_chat_list) > div,
+        {sb} [data-testid="element-container"]:has(.st-key-ha_sidebar_chat_list) > div {{
+            flex: 1 1 auto !important;
+            display: flex !important;
+            flex-direction: column !important;
+            min-height: 0 !important;
+            overflow: hidden !important;
+        }}
+        {sb} .st-key-ha_sidebar_chat_list > div[data-testid="stVerticalBlock"],
+        {sb} .st-key-ha_sidebar_chat_list [data-testid="stVerticalBlock"] {{
+            flex: 1 1 auto !important;
+            display: flex !important;
+            flex-direction: column !important;
+            min-height: 0 !important;
+            overflow-y: auto !important;
+            overflow-x: hidden !important;
+            padding-bottom: 7.5rem !important;
+        }}
+        {sb} [data-testid="stSidebarContent"] {{
+            position: relative !important;
+            overflow: hidden !important;
+        }}
+        {sb} .block-container {{
+            position: relative !important;
+            height: 100% !important;
+        }}
+        {um} {{
+            position: static !important;
+        }}
+        {footer} {{
+            position: absolute !important;
+            bottom: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            z-index: 99 !important;
+            background-color: {_HA_SIDEBAR_BG} !important;
+            border-top: 1px solid rgba(44, 48, 42, 0.1) !important;
+            padding: 0.75rem 1.1rem max(0.75rem, env(safe-area-inset-bottom, 0px)) 1.1rem !important;
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 0.5rem !important;
             overflow: hidden !important;
         }}
         {footer} [data-testid="stVerticalBlockBorderWrapper"],
         {footer} > div[data-testid="stVerticalBlock"],
         {footer} [data-testid="stVerticalBlock"] {{
-            flex: 0 0 auto !important;
             display: flex !important;
             flex-direction: column !important;
-            justify-content: flex-end !important;
-            gap: 0 !important;
+            gap: 0.5rem !important;
             background: transparent !important;
             border: none !important;
             box-shadow: none !important;
         }}
         {footer} .st-key-ha_sidebar_user_footer_lang,
         {footer} [data-testid="stElementContainer"]:has(.st-key-ha_sidebar_user_footer_lang) {{
-            flex: 0 0 auto !important;
             margin: 0 !important;
             padding: 0 !important;
         }}
         {footer} .ha-sidebar-user-footer-spacer,
         {footer} [data-testid="stMarkdownContainer"]:has(.ha-sidebar-user-footer-spacer),
         {footer} [data-testid="stElementContainer"]:has(.ha-sidebar-user-footer-spacer) {{
-            flex: 0 0 auto !important;
-            min-height: 1.65rem !important;
-            height: 1.65rem !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            overflow: hidden !important;
-        }}
-        {footer} .ha-sidebar-user-footer-spacer {{
-            display: block !important;
-            width: 100% !important;
+            display: none !important;
         }}
         {footer} .st-key-ha_sidebar_user_footer_logout,
         {footer} [data-testid="stElementContainer"]:has(.st-key-ha_sidebar_user_footer_logout),
         {footer} .st-key-ha_sidebar_logout {{
-            flex: 0 0 auto !important;
             margin-top: 0 !important;
             padding: 0 !important;
         }}
@@ -1425,14 +1626,14 @@ def _sidebar_user_flex_layout_css() -> str:
             width: 0 !important;
             height: 0 !important;
         }}
-        {body}::-webkit-scrollbar {{
+        {sb} .st-key-ha_sidebar_chat_list [data-testid="stVerticalBlock"]::-webkit-scrollbar {{
             width: 6px !important;
         }}
-        {body}::-webkit-scrollbar-thumb {{
+        {sb} .st-key-ha_sidebar_chat_list [data-testid="stVerticalBlock"]::-webkit-scrollbar-thumb {{
             background: rgba(44, 48, 42, 0.18) !important;
             border-radius: 999px !important;
         }}
-        {body}::-webkit-scrollbar-track {{
+        {sb} .st-key-ha_sidebar_chat_list [data-testid="stVerticalBlock"]::-webkit-scrollbar-track {{
             background: transparent !important;
         }}
     """
@@ -1442,7 +1643,7 @@ def _sidebar_user_pill_chrome_css() -> str:
     """Logged-in sidebar only — same soft glass pills as guest Chat/Profile nav."""
     panel = (
         '[data-testid="stAppViewContainer"]:not(:has(.st-key-ha_auth_shell)) '
-        '[data-testid="stSidebar"]'
+        '[data-testid="stSidebar"]:not([aria-expanded="false"])'
     )
     um = f"{panel} .st-key-ha_sidebar_user_main"
     footer = f"{um} .st-key-ha_sidebar_user_footer"
@@ -2083,23 +2284,23 @@ def _sidebar_section_nav_css() -> str:
 def _sidebar_login_btn_as_nav_css() -> str:
     """Login CTA — same pill chrome as Chat / Profile section nav."""
     btn = (
-        "[data-testid='stSidebar'] .st-key-ha_sidebar_login_btn [data-testid='stButton'] button, "
-        "[data-testid='stSidebar'] .st-key-ha_sidebar_login_btn button, "
-        ".st-key-ha_sidebar_login_btn button"
+        "[data-testid='stSidebar']:not([aria-expanded='false']) .st-key-ha_sidebar_login_btn [data-testid='stButton'] button, "
+        "[data-testid='stSidebar']:not([aria-expanded='false']) .st-key-ha_sidebar_login_btn button, "
+        "[data-testid='stSidebar']:not([aria-expanded='false']) .st-key-ha_sidebar_login_btn button"
     )
     btn_hover = (
-        "[data-testid='stSidebar'] .st-key-ha_sidebar_login_btn [data-testid='stButton'] button:hover, "
-        ".st-key-ha_sidebar_login_btn button:hover"
+        "[data-testid='stSidebar']:not([aria-expanded='false']) .st-key-ha_sidebar_login_btn [data-testid='stButton'] button:hover, "
+        "[data-testid='stSidebar']:not([aria-expanded='false']) .st-key-ha_sidebar_login_btn button:hover"
     )
     btn_active = (
-        "[data-testid='stSidebar'] .st-key-ha_sidebar_login_btn [data-testid='stButton'] button[kind='primary'], "
-        ".st-key-ha_sidebar_login_btn button[kind='primary']"
+        "[data-testid='stSidebar']:not([aria-expanded='false']) .st-key-ha_sidebar_login_btn [data-testid='stButton'] button[kind='primary'], "
+        "[data-testid='stSidebar']:not([aria-expanded='false']) .st-key-ha_sidebar_login_btn button[kind='primary']"
     )
     btn_text = (
-        "[data-testid='stSidebar'] .st-key-ha_sidebar_login_btn [data-testid='stButton'] button p, "
-        "[data-testid='stSidebar'] .st-key-ha_sidebar_login_btn [data-testid='stButton'] button span, "
-        ".st-key-ha_sidebar_login_btn button p, "
-        ".st-key-ha_sidebar_login_btn button span"
+        "[data-testid='stSidebar']:not([aria-expanded='false']) .st-key-ha_sidebar_login_btn [data-testid='stButton'] button p, "
+        "[data-testid='stSidebar']:not([aria-expanded='false']) .st-key-ha_sidebar_login_btn [data-testid='stButton'] button span, "
+        "[data-testid='stSidebar']:not([aria-expanded='false']) .st-key-ha_sidebar_login_btn button p, "
+        "[data-testid='stSidebar']:not([aria-expanded='false']) .st-key-ha_sidebar_login_btn button span"
     )
     return f"""
         {btn} {{
@@ -2113,14 +2314,14 @@ def _sidebar_login_btn_as_nav_css() -> str:
             padding: 0.52rem 0.7rem !important;
             min-height: 2.35rem !important;
             border-radius: 14px !important;
-            border: 1px solid rgba(44, 48, 42, 0.09) !important;
-            background: rgba(255, 255, 255, 0.34) !important;
+            border: 1px solid rgba(62, 78, 53, 0.18) !important;
+            background: #FDFCF8 !important;
             background-image: none !important;
-            box-shadow: 0 1px 5px rgba(38, 42, 36, 0.04) !important;
-            color: #6a6258 !important;
-            -webkit-text-fill-color: #6a6258 !important;
+            box-shadow: none !important;
+            color: #3e4e35 !important;
+            -webkit-text-fill-color: #3e4e35 !important;
             font-size: 0.86rem !important;
-            font-weight: 500 !important;
+            font-weight: 600 !important;
             line-height: 1.25 !important;
             text-align: center !important;
             backdrop-filter: none !important;
@@ -2149,19 +2350,19 @@ def _sidebar_login_btn_as_nav_css() -> str:
             text-align: center !important;
         }}
         {btn_hover} {{
-            background: rgba(255, 253, 248, 0.72) !important;
-            border-color: rgba(44, 48, 42, 0.12) !important;
-            box-shadow: 0 2px 8px rgba(38, 42, 36, 0.06) !important;
-            color: #4a4540 !important;
-            -webkit-text-fill-color: #4a4540 !important;
+            background: #F4F2EC !important;
+            border-color: rgba(62, 78, 53, 0.28) !important;
+            box-shadow: none !important;
+            color: #3e4e35 !important;
+            -webkit-text-fill-color: #3e4e35 !important;
             transform: translateY(-1px);
             filter: none !important;
         }}
         {btn_active}:hover {{
-            background: rgba(255, 253, 248, 0.95) !important;
-            border-color: rgba(44, 48, 42, 0.14) !important;
-            color: #3d3834 !important;
-            -webkit-text-fill-color: #3d3834 !important;
+            background: #F4F2EC !important;
+            border-color: rgba(62, 78, 53, 0.28) !important;
+            color: #3e4e35 !important;
+            -webkit-text-fill-color: #3e4e35 !important;
         }}
     """
 
@@ -2170,7 +2371,7 @@ def _sidebar_guest_no_scroll_css() -> str:
     """Guest sidebar: no scrollbars; flex gap pushes login block without overlap."""
     sb = (
         '[data-testid="stAppViewContainer"]:not(:has(.st-key-ha_auth_shell)) '
-        '[data-testid="stSidebar"]:has(.st-key-ha_sidebar_login_footer)'
+        '[data-testid="stSidebar"]:not([aria-expanded="false"]):has(.st-key-ha_sidebar_login_footer)'
     )
     scroll_targets = (
         "",
@@ -2206,13 +2407,39 @@ def _sidebar_guest_no_scroll_css() -> str:
             padding-top: 0.55rem !important;
         }}
         {sb} .st-key-ha_sidebar_login_footer {{
-            margin-top: 0 !important;
+            position: absolute !important;
+            bottom: 12px !important;
+            left: 12px !important;
+            right: 12px !important;
+            z-index: 12 !important;
+            margin-top: auto !important;
+            margin-bottom: 0 !important;
+            padding: 1.25rem !important;
+            box-sizing: border-box !important;
+            overflow: visible !important;
+            background: #EBE3D8 !important;
+            border: 1px solid rgba(44, 48, 42, 0.05) !important;
+            border-radius: 20px !important;
+            box-shadow: 0 4px 20px rgba(60, 78, 58, 0.05), 0 2px 8px rgba(60, 78, 58, 0.03) !important;
+            height: auto !important;
+            max-height: none !important;
+            min-height: 0 !important;
             overflow: visible !important;
         }}
+        {sb} .st-key-ha_sidebar_login_btn,
+        {sb} .st-key-ha_sidebar_login_btn [data-testid="stElementContainer"],
+        {sb} .st-key-ha_sidebar_login_btn [data-testid="element-container"],
         {sb} .st-key-ha_sidebar_login_btn button {{
             position: relative !important;
             top: auto !important;
             margin-top: 0 !important;
+            margin-bottom: 0 !important;
+            padding-bottom: 0 !important;
+            width: 100% !important;
+            height: auto !important;
+            max-height: none !important;
+            min-height: 0 !important;
+            overflow: visible !important;
         }}
     """
 
@@ -2222,44 +2449,67 @@ def _chat_composer_herbal_css() -> str:
     comp = ".st-key-ha_chat_composer_row"
     return f"""
         {comp} {{
-            background: linear-gradient(
-                180deg,
-                rgba(242, 235, 227, 0) 0%,
-                rgba(242, 235, 227, 0.9) 38%,
-                {_HA_SIDEBAR_BG} 100%
-            ) !important;
+            background: transparent !important;
+            padding: 0 !important;
         }}
         {comp} [data-testid="stHorizontalBlock"] {{
-            background: rgba(255, 253, 248, 0.94) !important;
-            border: 1px solid rgba(44, 48, 42, 0.1) !important;
+            background: #ffffff !important;
+            border: 1px solid rgba(92, 111, 94, 0.15) !important;
             backdrop-filter: blur(12px) saturate(1.04) !important;
             -webkit-backdrop-filter: blur(12px) saturate(1.04) !important;
-            box-shadow:
-                0 2px 12px rgba(38, 42, 36, 0.06),
-                inset 0 1px 0 rgba(255, 255, 255, 0.72) !important;
+            box-shadow: none !important;
             transition:
-                box-shadow 0.22s ease,
                 border-color 0.22s ease,
                 background-color 0.22s ease !important;
+            align-items: center !important;
+            gap: 0.5rem !important;
+            padding: 0.35rem 0.5rem 0.35rem 0.65rem !important;
+            border-radius: 999px !important;
+        }}
+        {comp} [data-testid="stHorizontalBlock"] > div[data-testid="column"]:first-child {{
+            flex: 0 0 2.2rem !important;
+            width: 2.2rem !important;
+            min-width: 2.2rem !important;
+            max-width: 2.2rem !important;
+            display: flex !important;
+            justify-content: center !important;
+            align-items: center !important;
+        }}
+        {comp} [data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(2) {{
+            display: flex !important;
+            align-items: center !important;
         }}
         {comp} [data-testid="stHorizontalBlock"]:focus-within {{
-            border-color: rgba(44, 48, 42, 0.14) !important;
-            box-shadow:
-                0 2px 14px rgba(38, 42, 36, 0.08),
-                inset 0 1px 0 rgba(255, 255, 255, 0.8) !important;
+            border-color: rgba(92, 111, 94, 0.32) !important;
+            box-shadow: none !important;
         }}
-        {comp} [data-testid="stChatInput"] > div {{
-            background: rgba(255, 255, 255, 0.38) !important;
-            border: 1px solid rgba(44, 48, 42, 0.07) !important;
-            border-radius: 999px !important;
-            box-shadow: inset 0 1px 2px rgba(38, 42, 36, 0.03) !important;
+        {comp} [data-testid="stChatInput"] {{
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100% !important;
+        }}
+        {comp} [data-testid="stChatInput"] > div,
+        .st-key-ha_guest_empty_shell {comp} [data-testid="stChatInput"] > div,
+        .st-key-ha_user_empty_shell {comp} [data-testid="stChatInput"] > div {{
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+            display: flex !important;
+            align-items: center !important;
         }}
         {comp} [data-testid="stChatInput"] textarea,
         {comp} [data-testid="stChatInput"] input {{
-            color: #3d3834 !important;
-            -webkit-text-fill-color: #3d3834 !important;
-            font-size: 0.9rem !important;
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            color: #2a3228 !important;
+            -webkit-text-fill-color: #2a3228 !important;
+            font-size: 0.95rem !important;
             font-weight: 450 !important;
+            padding-top: 0.45rem !important;
+            padding-bottom: 0.45rem !important;
+            line-height: 1.4 !important;
         }}
         {comp} [data-testid="stChatInput"] textarea::placeholder,
         {comp} [data-testid="stChatInput"] input::placeholder {{
@@ -2268,45 +2518,71 @@ def _chat_composer_herbal_css() -> str:
             opacity: 1 !important;
         }}
         {comp} [data-testid="stPopover"] button {{
-            background: rgba(255, 255, 255, 0.42) !important;
-            border: 1px solid rgba(44, 48, 42, 0.09) !important;
-            color: #6a6258 !important;
-            -webkit-text-fill-color: #6a6258 !important;
-            box-shadow: 0 1px 5px rgba(38, 42, 36, 0.04) !important;
+            height: 2.2rem !important;
+            min-height: 2.2rem !important;
+            width: 2.2rem !important;
+            max-width: 2.2rem !important;
+            padding: 0 !important;
+            border-radius: 50% !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            background: transparent !important;
+            border: none !important;
+            color: #5c6f5e !important;
+            -webkit-text-fill-color: #5c6f5e !important;
+            box-shadow: none !important;
         }}
         {comp} [data-testid="stPopover"] button:hover {{
-            background: rgba(255, 253, 248, 0.78) !important;
-            border-color: rgba(44, 48, 42, 0.12) !important;
-            color: #4a4540 !important;
-            -webkit-text-fill-color: #4a4540 !important;
+            background: rgba(92, 111, 94, 0.08) !important;
+            color: #3e4e35 !important;
+            -webkit-text-fill-color: #3e4e35 !important;
+        }}
+        {comp} [data-testid="stPopover"] button svg {{
+            display: none !important;
+        }}
+        {comp} [data-testid="stPopover"] button [data-testid="stMarkdownContainer"] {{
+            display: none !important;
+        }}
+        {comp} [data-testid="stPopover"] button [data-testid="stIconMaterial"] {{
+            margin: 0 !important;
+            font-size: 1.25rem !important;
+            color: #5c6f5e !important;
         }}
         {comp} [data-testid="stChatInput"] button,
         {comp} [data-testid="stChatInput"] [data-testid="stChatInputSubmitButton"] button,
         {comp} [data-testid="stChatInput"] button[kind="secondary"],
         {comp} [data-testid="stChatInput"] button[kind="primary"] {{
-            background: rgba(255, 255, 255, 0.5) !important;
-            border: 1px solid rgba(44, 48, 42, 0.08) !important;
-            color: {_HA_SAGE} !important;
-            -webkit-text-fill-color: {_HA_SAGE} !important;
-            box-shadow: 0 1px 4px rgba(38, 42, 36, 0.05) !important;
+            height: 2.2rem !important;
+            min-height: 2.2rem !important;
+            width: 2.2rem !important;
+            max-width: 2.2rem !important;
+            padding: 0 !important;
+            border-radius: 50% !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            background: #5c6f5e !important;
+            border: none !important;
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+            box-shadow: 0 2px 8px rgba(92, 111, 94, 0.2) !important;
+            margin: auto 0 !important;
         }}
         {comp} [data-testid="stChatInput"] button:hover,
         {comp} [data-testid="stChatInput"] [data-testid="stChatInputSubmitButton"] button:hover {{
-            background: rgba(255, 253, 248, 0.92) !important;
-            border-color: rgba(44, 48, 42, 0.12) !important;
-            color: {_HA_SAGE_DEEP} !important;
-            -webkit-text-fill-color: {_HA_SAGE_DEEP} !important;
+            background: #3e4e35 !important;
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+            box-shadow: 0 4px 12px rgba(62, 78, 53, 0.3) !important;
         }}
         {comp} [data-testid="stChatInput"] button svg,
         {comp} [data-testid="stChatInput"] [data-testid="stIconMaterial"] {{
-            color: {_HA_SAGE} !important;
-            fill: {_HA_SAGE} !important;
-        }}
-        .st-key-ha_guest_empty_shell {comp} [data-testid="stChatInput"] > div,
-        .st-key-ha_user_empty_shell {comp} [data-testid="stChatInput"] > div {{
-            background: rgba(255, 255, 255, 0.38) !important;
-            border: 1px solid rgba(44, 48, 42, 0.07) !important;
-            box-shadow: inset 0 1px 2px rgba(38, 42, 36, 0.03) !important;
+            color: #ffffff !important;
+            fill: #ffffff !important;
+            width: 1.15rem !important;
+            height: 1.15rem !important;
+            margin: 0 !important;
         }}
     """
 
@@ -2377,7 +2653,7 @@ def _inject_premium_herbal_ui(*, in_sidebar: bool = False) -> None:
 def _sidebar_collapse_injected_chrome_css() -> str:
     """Logged-in only: style/script nodes in sidebar must not steal vertical space."""
     sb = (
-        ':is(section[data-testid="stSidebar"], [data-testid="stSidebar"])'
+        ':is(section[data-testid="stSidebar"], [data-testid="stSidebar"]):not([aria-expanded="false"])'
         ':has(.st-key-ha_sidebar_user_main)'
     )
     return f"""
@@ -2402,7 +2678,7 @@ def _layout_logged_in_sidebar_final_css() -> str:
     """Last-injected sidebar rules: full-height column, nav up, logout at bottom."""
     sb = (
         '[data-testid="stAppViewContainer"]:not(:has(.st-key-ha_auth_shell)) '
-        ':is(section[data-testid="stSidebar"], [data-testid="stSidebar"])'
+        ':is(section[data-testid="stSidebar"], [data-testid="stSidebar"]):not([aria-expanded="false"])'
         ':has(.st-key-ha_sidebar_user_main)'
     )
     um = f"{sb} .st-key-ha_sidebar_user_main"
@@ -2475,25 +2751,88 @@ def _layout_logged_in_sidebar_final_css() -> str:
         {body} {{
             flex: 1 1 auto !important;
             min-height: 0 !important;
+            display: flex !important;
+            flex-direction: column !important;
+            overflow: hidden !important;
+        }}
+        {sb} .st-key-ha_sidebar_chat_panel,
+        {sb} [data-testid="stElementContainer"]:has(.st-key-ha_sidebar_chat_panel),
+        {sb} [data-testid="element-container"]:has(.st-key-ha_sidebar_chat_panel),
+        {sb} [data-testid="stElementContainer"]:has(.st-key-ha_sidebar_chat_panel) > div,
+        {sb} [data-testid="element-container"]:has(.st-key-ha_sidebar_chat_panel) > div {{
+            flex: 1 1 auto !important;
+            display: flex !important;
+            flex-direction: column !important;
+            min-height: 0 !important;
+            overflow: hidden !important;
+        }}
+        {sb} .st-key-ha_sidebar_chat_panel > div[data-testid="stVerticalBlock"],
+        {sb} .st-key-ha_sidebar_chat_panel [data-testid="stVerticalBlock"] {{
+            flex: 1 1 auto !important;
+            display: flex !important;
+            flex-direction: column !important;
+            min-height: 0 !important;
+            overflow: hidden !important;
+        }}
+        {sb} .st-key-ha_sidebar_chat_list,
+        {sb} [data-testid="stElementContainer"]:has(.st-key-ha_sidebar_chat_list),
+        {sb} [data-testid="element-container"]:has(.st-key-ha_sidebar_chat_list),
+        {sb} [data-testid="stElementContainer"]:has(.st-key-ha_sidebar_chat_list) > div,
+        {sb} [data-testid="element-container"]:has(.st-key-ha_sidebar_chat_list) > div {{
+            flex: 1 1 auto !important;
+            display: flex !important;
+            flex-direction: column !important;
+            min-height: 0 !important;
+            overflow: hidden !important;
+        }}
+        {sb} .st-key-ha_sidebar_chat_list > div[data-testid="stVerticalBlock"],
+        {sb} .st-key-ha_sidebar_chat_list [data-testid="stVerticalBlock"] {{
+            flex: 1 1 auto !important;
+            display: flex !important;
+            flex-direction: column !important;
+            min-height: 0 !important;
             overflow-y: auto !important;
             overflow-x: hidden !important;
+            padding-bottom: 7.5rem !important;
+        }}
+        {sb} [data-testid="stSidebarContent"] {{
+            position: relative !important;
+            overflow: hidden !important;
+        }}
+        {sb} .block-container {{
+            position: relative !important;
+            height: 100% !important;
+        }}
+        {um} {{
+            position: static !important;
         }}
         {footer} {{
-            flex: 0 0 auto !important;
-            margin-top: auto !important;
-            width: 100% !important;
-            padding-top: 0.65rem !important;
-            padding-bottom: max(0.55rem, env(safe-area-inset-bottom, 0px)) !important;
+            position: absolute !important;
+            bottom: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            z-index: 99 !important;
+            background-color: {_HA_SIDEBAR_BG} !important;
+            border-top: 1px solid rgba(44, 48, 42, 0.1) !important;
+            padding: 0.75rem 1.1rem max(0.75rem, env(safe-area-inset-bottom, 0px)) 1.1rem !important;
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 0.5rem !important;
+            overflow: hidden !important;
+        }}
+        {footer} [data-testid="stVerticalBlockBorderWrapper"],
+        {footer} > div[data-testid="stVerticalBlock"],
+        {footer} [data-testid="stVerticalBlock"] {{
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 0.5rem !important;
         }}
         {footer} .ha-sidebar-user-footer-spacer,
         {footer} [data-testid="stElementContainer"]:has(.ha-sidebar-user-footer-spacer) {{
-            flex: 0 0 auto !important;
-            min-height: 1.65rem !important;
-            height: 1.65rem !important;
+            display: none !important;
         }}
         {footer} .st-key-ha_sidebar_user_footer_logout,
         {footer} [data-testid="stElementContainer"]:has(.st-key-ha_sidebar_user_footer_logout) {{
-            flex: 0 0 auto !important;
             margin-top: 0 !important;
         }}
     """
@@ -4822,11 +5161,13 @@ def _inject_global_styles(*, in_sidebar: bool = False) -> None:
         /* Guest sidebar: tek kolon flex, scroll yok; login altta sabit. */
         section[data-testid="stSidebar"]:has(.st-key-ha_sidebar_login_footer),
         [data-testid="stSidebar"]:has(.st-key-ha_sidebar_login_footer) {
-            height: 100dvh !important;
-            max-height: 100dvh !important;
+            height: 100vh !important;
+            max-height: 100vh !important;
             overflow: hidden !important;
             display: flex !important;
             flex-direction: column !important;
+            padding-bottom: 0 !important;
+            margin-bottom: 0 !important;
         }
         [data-testid="stSidebar"]:has(.st-key-ha_sidebar_login_footer) [data-testid="stSidebarHeader"] {
             flex: 0 0 auto !important;
@@ -4837,12 +5178,16 @@ def _inject_global_styles(*, in_sidebar: bool = False) -> None:
             margin: 0 !important;
         }
         [data-testid="stSidebar"]:has(.st-key-ha_sidebar_login_footer) [data-testid="stSidebarContent"],
-        [data-testid="stSidebar"]:has(.st-key-ha_sidebar_login_footer) [data-testid="stSidebarUserContent"] {
+        [data-testid="stSidebar"]:has(.st-key-ha_sidebar_login_footer) [data-testid="stSidebarContent"] > div,
+        [data-testid="stSidebar"]:has(.st-key-ha_sidebar_login_footer) [data-testid="stSidebarUserContent"],
+        [data-testid="stSidebar"]:has(.st-key-ha_sidebar_login_footer) [data-testid="stSidebarUserContent"] > div {
             display: flex !important;
             flex-direction: column !important;
             flex: 1 1 auto !important;
             min-height: 0 !important;
             padding-top: 0 !important;
+            padding-bottom: 0 !important;
+            margin-bottom: 0 !important;
             overflow: hidden !important;
         }
         [data-testid="stSidebar"]:has(.st-key-ha_sidebar_login_footer) .block-container {
@@ -4851,8 +5196,9 @@ def _inject_global_styles(*, in_sidebar: bool = False) -> None:
             flex: 1 1 auto !important;
             min-height: 0 !important;
             padding-top: 0.2rem !important;
-            padding-bottom: 0 !important;
-            overflow: hidden !important;
+            padding-bottom: 230px !important;
+            margin-bottom: 0 !important;
+            overflow-y: auto !important;
             box-sizing: border-box !important;
             background: transparent !important;
             background-image: none !important;
@@ -4872,8 +5218,11 @@ def _inject_global_styles(*, in_sidebar: bool = False) -> None:
         [data-testid="stSidebar"]:has(.st-key-ha_sidebar_login_footer)
             [data-testid="stElementContainer"]:has(.st-key-ha_sidebar_login_footer),
         [data-testid="stSidebar"]:has(.st-key-ha_sidebar_login_footer)
-            [data-testid="element-container"]:has(.st-key-ha_sidebar_login_footer) {
-            margin-top: 0.85rem !important;
+            [data-testid="element-container"]:has(.st-key-ha_sidebar_login_footer),
+        [data-testid="stSidebar"]:has(.st-key-ha_sidebar_login_footer) .st-key-ha_sidebar_login_footer {
+            margin-top: auto !important;
+            margin-bottom: 0 !important;
+            padding-bottom: 0 !important;
             flex-shrink: 0 !important;
         }
         [data-testid="stSidebar"]:has(.st-key-ha_sidebar_login_footer)
@@ -4921,51 +5270,74 @@ def _inject_global_styles(*, in_sidebar: bool = False) -> None:
         [data-testid="stSidebar"]:has(.st-key-ha_sidebar_login_footer)
             [data-testid="stVerticalBlockBorderWrapper"]:has(.st-key-ha_sidebar_login_footer) {
             flex-shrink: 0 !important;
-            margin-top: 0 !important;
+            margin-top: auto !important;
+            margin-bottom: 0 !important;
+            padding-bottom: 0 !important;
             width: 100% !important;
             overflow: visible !important;
         }
         .st-key-ha_sidebar_login_footer [data-testid="stVerticalBlock"] {
             display: flex !important;
             flex-direction: column !important;
-            gap: 0.85rem !important;
+            gap: 12px !important;
             align-items: stretch !important;
+            margin-bottom: 0 !important;
+            padding-bottom: 0 !important;
+            height: auto !important;
+            max-height: none !important;
+            min-height: 0 !important;
+            overflow: visible !important;
         }
-        .st-key-ha_sidebar_login_footer [data-testid="stElementContainer"] {
+        .st-key-ha_sidebar_login_footer [data-testid="stVerticalBlockBorderWrapper"] {
+            height: auto !important;
+            max-height: none !important;
+            min-height: 0 !important;
+            overflow: visible !important;
+        }
+        .st-key-ha_sidebar_login_footer [data-testid="stElementContainer"],
+        .st-key-ha_sidebar_login_footer [data-testid="element-container"] {
             margin: 0 !important;
             padding: 0 !important;
             flex-shrink: 0 !important;
             position: relative !important;
+            height: auto !important;
+            max-height: none !important;
+            min-height: 0 !important;
+            overflow: visible !important;
         }
         .st-key-ha_sidebar_login_btn {
-            margin-top: 0.15rem !important;
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
             padding-top: 0 !important;
+            padding-bottom: 0 !important;
+            width: 100% !important;
         }
         .st-key-ha_sidebar_login_footer {
-            position: relative !important;
+            position: absolute !important;
+            bottom: 12px !important;
+            left: 12px !important;
+            right: 12px !important;
             z-index: 12 !important;
-            margin-top: 0 !important;
+            margin-top: auto !important;
             flex-shrink: 0 !important;
             display: flex !important;
             flex-direction: column !important;
-            gap: 0.65rem !important;
-            width: calc(100% + 1.7rem) !important;
+            gap: 0 !important;
+            width: auto !important;
             max-width: none !important;
-            margin-left: -0.85rem !important;
-            margin-right: -0.85rem !important;
+            height: auto !important;
+            max-height: none !important;
+            min-height: 0 !important;
+            margin-left: 0 !important;
+            margin-right: 0 !important;
             box-sizing: border-box !important;
-            padding: 1.15rem 0.85rem 1rem !important;
+            padding: 1.25rem !important;
             margin-bottom: 0 !important;
             overflow: visible !important;
-            background: linear-gradient(
-                180deg,
-                rgba(242, 235, 227, 0.72) 0%,
-                var(--ha-sidebar-bg) 28%,
-                var(--ha-sidebar-bg) 100%
-            ) !important;
-            border-top: 1px solid rgba(44, 48, 42, 0.1) !important;
-            border-radius: 18px 18px 0 0 !important;
-            box-shadow: 0 -6px 24px rgba(38, 42, 36, 0.07) !important;
+            background: #EBE3D8 !important;
+            border: 1px solid rgba(44, 48, 42, 0.05) !important;
+            border-radius: 20px !important;
+            box-shadow: 0 4px 20px rgba(60, 78, 58, 0.05), 0 2px 8px rgba(60, 78, 58, 0.03) !important;
         }
         [data-testid="stSidebar"]:has(.st-key-ha_sidebar_login_footer)
             .st-key-ha_sidebar_login_btn {
@@ -4974,7 +5346,9 @@ def _inject_global_styles(*, in_sidebar: bool = False) -> None:
             visibility: visible !important;
             opacity: 1 !important;
             overflow: visible !important;
-            min-height: 2.75rem !important;
+            min-height: 2.35rem !important;
+            margin-bottom: 0 !important;
+            padding-bottom: 0 !important;
         }
         /* Login kartı: başlık + açıklama (sade, kutusuz) */
         .ha-sidebar-login-card {
@@ -4985,20 +5359,23 @@ def _inject_global_styles(*, in_sidebar: bool = False) -> None:
             box-shadow: none !important;
         }
         .ha-sidebar-login-title {
-            margin: 0 0 0.35rem 0 !important;
+            margin: 0 !important;
             padding: 0 !important;
             font-family: "Inter", system-ui, -apple-system, sans-serif !important;
-            font-size: 0.84rem !important;
-            font-weight: 650 !important;
-            line-height: 1.3 !important;
-            color: var(--ha-text) !important;
-            -webkit-text-fill-color: var(--ha-text) !important;
+            font-size: 0.92rem !important;
+            font-weight: 600 !important;
+            line-height: 1.35 !important;
+            color: #3e4e35 !important;
+            -webkit-text-fill-color: #3e4e35 !important;
+            display: block !important;
+            text-align: left !important;
         }
         /* Açıklama metni: küçük, açık gri, sade (kutusuz) */
         .ha-sidebar-login-hint {
-            margin: 0 0 0.15rem 0 !important;
-            padding: 0 0 0.35rem 0 !important;
+            margin: 0 0 24px 0 !important;
+            padding: 0 !important;
             font-family: "Inter", system-ui, -apple-system, sans-serif !important;
+<<<<<<< HEAD
             font-size: 0.75rem !important;
             font-weight: 400 !important;
             line-height: 1.45 !important;
@@ -5017,6 +5394,18 @@ def _inject_global_styles(*, in_sidebar: bool = False) -> None:
         }
         .st-key-ha_sidebar_login_row button:hover {
             opacity: 0.9 !important;
+=======
+            font-size: 0.76rem !important;
+            font-weight: 400 !important;
+            line-height: 1.45 !important;
+            color: #6f7d6c !important;
+            -webkit-text-fill-color: #6f7d6c !important;
+            background: transparent !important;
+            border: none !important;
+            border-radius: 0 !important;
+            display: block !important;
+            text-align: left !important;
+>>>>>>> 2c45e01 (Update UI and admin login improvements)
         }
         /* Premium header: nav label + user card */
         [data-testid="stSidebar"]:has(.st-key-ha_sidebar_login_footer)
@@ -5591,15 +5980,21 @@ def _inject_global_styles(*, in_sidebar: bool = False) -> None:
             width: 100% !important;
             max-width: 100% !important;
         }
+
         .st-key-ha_guest_suggested_cards,
         .st-key-ha_user_suggested_cards {
             width: 100% !important;
+            max-width: 760px !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
             margin-top: 0.35rem !important;
             margin-bottom: 0 !important;
         }
         .st-key-ha_user_empty_shell .st-key-ha_user_suggested_cards {
             margin-top: 0.5rem !important;
             margin-bottom: 0.25rem !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
         }
         .st-key-ha_guest_suggested_cards [data-testid="stVerticalBlock"] {
             gap: 0.75rem !important;
@@ -5619,14 +6014,15 @@ def _inject_global_styles(*, in_sidebar: bool = False) -> None:
             flex-direction: row !important;
             align-items: center !important;
             justify-content: flex-start !important;
-            min-height: 5.75rem !important;
-            height: auto !important;
-            padding: 0.95rem 1.1rem !important;
-            font-size: 0.88rem !important;
+            min-height: 3.5rem !important;
+            height: 3.5rem !important;
+            max-height: 3.5rem !important;
+            padding: 0 1rem !important;
+            font-size: 0.78rem !important;
             font-weight: 500 !important;
             line-height: 1.35 !important;
             text-align: left !important;
-            white-space: normal !important;
+            white-space: nowrap !important;
             border-radius: 14px !important;
             border: 1px solid rgba(0, 0, 0, 0.06) !important;
             background: rgba(255, 255, 255, 0.94) !important;
@@ -5635,6 +6031,36 @@ def _inject_global_styles(*, in_sidebar: bool = False) -> None:
             box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04) !important;
             max-width: none !important;
             width: 100% !important;
+            overflow: hidden !important;
+        }
+        .st-key-ha_guest_suggested_cards button[data-testid^="baseButton"] > div,
+        .st-key-ha_guest_suggested_cards button[data-testid^="baseButton"] > span,
+        .st-key-ha_guest_suggested_cards button[data-testid^="baseButton"] div:has([data-testid="stIconMaterial"]),
+        .st-key-ha_guest_suggested_cards button[data-testid^="baseButton"] span:has([data-testid="stIconMaterial"]),
+        .st-key-ha_user_suggested_cards button[data-testid^="baseButton"] > div,
+        .st-key-ha_user_suggested_cards button[data-testid^="baseButton"] > span,
+        .st-key-ha_user_suggested_cards button[data-testid^="baseButton"] div:has([data-testid="stIconMaterial"]),
+        .st-key-ha_user_suggested_cards button[data-testid^="baseButton"] span:has([data-testid="stIconMaterial"]) {
+            display: flex !important;
+            flex-direction: row !important;
+            align-items: center !important;
+            justify-content: flex-start !important;
+            gap: 10px !important;
+            width: 100% !important;
+            min-width: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: hidden !important;
+            white-space: nowrap !important;
+        }
+        .st-key-ha_guest_suggested_cards button[data-testid^="baseButton"] [data-testid="stMarkdownContainer"],
+        .st-key-ha_user_suggested_cards button[data-testid^="baseButton"] [data-testid="stMarkdownContainer"] {
+            min-width: 0 !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            white-space: nowrap !important;
+            flex: 1 1 auto !important;
+            display: block !important;
         }
         .st-key-ha_guest_suggested_cards button[data-testid^="baseButton"]:hover,
         .st-key-ha_user_suggested_cards button[data-testid^="baseButton"]:hover {
@@ -5648,19 +6074,27 @@ def _inject_global_styles(*, in_sidebar: bool = False) -> None:
         .st-key-ha_user_suggested_cards button .material-symbols-rounded {
             color: #6b8a5a !important;
             font-size: 1.2rem !important;
-            margin-right: 0.55rem !important;
+            margin-right: 0 !important;
             margin-left: 0 !important;
+            flex: 0 0 auto !important;
             flex-shrink: 0 !important;
             align-self: center !important;
         }
         .st-key-ha_guest_suggested_cards button p,
-        .st-key-ha_guest_suggested_cards button span,
+        .st-key-ha_guest_suggested_cards button span:not([data-testid="stIconMaterial"]):not(.material-symbols-rounded),
         .st-key-ha_user_suggested_cards button p,
-        .st-key-ha_user_suggested_cards button span {
+        .st-key-ha_user_suggested_cards button span:not([data-testid="stIconMaterial"]):not(.material-symbols-rounded) {
             text-align: left !important;
             -webkit-text-fill-color: var(--ha-text) !important;
             flex: 1 1 auto !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            min-width: 0 !important;
         }
+
         .st-key-ha_guest_suggested_cards button[data-testid^="baseButton"]::after,
         .st-key-ha_user_suggested_cards button[data-testid^="baseButton"]::after {
             content: "›" !important;
@@ -5735,13 +6169,8 @@ def _inject_global_styles(*, in_sidebar: bool = False) -> None:
             max-width: none !important;
             z-index: 999 !important;
             margin: 0 !important;
-            padding: 0.5rem 0 0.35rem 0 !important;
-            background: linear-gradient(
-                180deg,
-                rgba(242, 235, 227, 0) 0%,
-                rgba(242, 235, 227, 0.9) 38%,
-                #F2EBE3 100%
-            ) !important;
+            padding: 0 !important;
+            background: transparent !important;
             border: none !important;
             box-shadow: none !important;
             border-radius: 0 !important;
@@ -5765,15 +6194,15 @@ def _inject_global_styles(*, in_sidebar: bool = False) -> None:
             margin-left: auto !important;
             margin-right: auto !important;
             margin-bottom: max(0.55rem, env(safe-area-inset-bottom, 0px)) !important;
-            padding: 0.38rem 0.55rem !important;
+            padding: 0.35rem 0.5rem 0.35rem 0.65rem !important;
             border-radius: 999px !important;
-            background: rgba(255, 253, 248, 0.94) !important;
-            border: 1px solid rgba(44, 48, 42, 0.1) !important;
-            box-shadow:
-                0 2px 12px rgba(38, 42, 36, 0.06),
-                inset 0 1px 0 rgba(255, 255, 255, 0.72) !important;
+            background: #ffffff !important;
+            border: 1px solid rgba(92, 111, 94, 0.15) !important;
+            box-shadow: none !important;
             backdrop-filter: blur(12px) saturate(1.04) !important;
             -webkit-backdrop-filter: blur(12px) saturate(1.04) !important;
+            align-items: center !important;
+            gap: 0.5rem !important;
         }
         @media (max-width: 720px) {
             .st-key-ha_chat_composer_row [data-testid="stHorizontalBlock"] {
@@ -5781,6 +6210,7 @@ def _inject_global_styles(*, in_sidebar: bool = False) -> None:
                 margin-right: 0.5rem !important;
             }
         }
+<<<<<<< HEAD
         
         /* THE GEAR BUTTON (LEFT) */
         .st-key-ha_chat_composer_row [data-testid="stHorizontalBlock"] > div[data-testid="column"]:first-child {
@@ -5791,19 +6221,27 @@ def _inject_global_styles(*, in_sidebar: bool = False) -> None:
             display: flex;
             align-items: center;
             justify-content: center;
+=======
+        .st-key-ha_chat_composer_row [data-testid="stHorizontalBlock"] > div[data-testid="column"]:first-child {
+            flex: 0 0 2.2rem !important;
+            width: 2.2rem !important;
+            min-width: 2.2rem !important;
+            max-width: 2.2rem !important;
+            display: flex !important;
+            justify-content: center !important;
+            align-items: center !important;
+>>>>>>> 2c45e01 (Update UI and admin login improvements)
         }
-        .st-key-ha_chat_composer_row [data-testid="stPopover"] button {
-            min-height: 2.35rem !important;
+        .st-key-ha_chat_composer_row [data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(2) {
+            display: flex !important;
+            align-items: center !important;
+        }
+        .st-key-ha_chat_composer_row [data-testid="stChatInput"] {
+            margin: 0 !important;
+            padding: 0 !important;
             width: 100% !important;
-            max-width: none !important;
-            padding: 0.15rem !important;
-            border-radius: 12px !important;
-            border: 1px solid rgba(44, 48, 42, 0.09) !important;
-            background: rgba(255, 255, 255, 0.42) !important;
-            color: #6a6258 !important;
-            -webkit-text-fill-color: #6a6258 !important;
-            box-shadow: 0 1px 5px rgba(38, 42, 36, 0.04) !important;
         }
+<<<<<<< HEAD
         .st-key-ha_chat_composer_row [data-testid="stPopover"] button:hover {
             background: rgba(255, 253, 248, 0.78) !important;
             border-color: rgba(44, 48, 42, 0.12) !important;
@@ -5827,37 +6265,104 @@ def _inject_global_styles(*, in_sidebar: bool = False) -> None:
             border: 1px solid rgba(44, 48, 42, 0.07) !important;
             background: rgba(255, 255, 255, 0.38) !important;
             box-shadow: inset 0 1px 2px rgba(38, 42, 36, 0.03) !important;
+=======
+        .st-key-ha_chat_composer_row [data-testid="stChatInput"] > div,
+        .st-key-ha_guest_empty_shell .st-key-ha_chat_composer_row [data-testid="stChatInput"] > div,
+        .st-key-ha_user_empty_shell .st-key-ha_chat_composer_row [data-testid="stChatInput"] > div {
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+            display: flex !important;
+            align-items: center !important;
+>>>>>>> 2c45e01 (Update UI and admin login improvements)
         }
         .st-key-ha_chat_composer_row [data-testid="stChatInput"] textarea,
         .st-key-ha_chat_composer_row [data-testid="stChatInput"] input {
-            color: #3d3834 !important;
-            -webkit-text-fill-color: #3d3834 !important;
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            color: #2a3228 !important;
+            -webkit-text-fill-color: #2a3228 !important;
+            font-size: 0.95rem !important;
+            font-weight: 450 !important;
+            padding-top: 0.45rem !important;
+            padding-bottom: 0.45rem !important;
+            line-height: 1.4 !important;
         }
         .st-key-ha_chat_composer_row [data-testid="stChatInput"] textarea::placeholder,
         .st-key-ha_chat_composer_row [data-testid="stChatInput"] input::placeholder {
             color: #8a8278 !important;
             -webkit-text-fill-color: #8a8278 !important;
         }
-        .st-key-ha_chat_composer_row [data-testid="stChatInput"] button,
-        .st-key-ha_chat_composer_row [data-testid="stChatInput"] button[kind="secondary"],
-        .st-key-ha_chat_composer_row [data-testid="stChatInput"] button[kind="primary"] {
-            background: rgba(255, 255, 255, 0.5) !important;
-            border: 1px solid rgba(44, 48, 42, 0.08) !important;
+        .st-key-ha_chat_composer_row [data-testid="stPopover"] button {
+            height: 2.2rem !important;
+            min-height: 2.2rem !important;
+            width: 2.2rem !important;
+            max-width: 2.2rem !important;
+            padding: 0 !important;
+            border-radius: 50% !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            background: transparent !important;
+            border: none !important;
             color: #5c6f5e !important;
             -webkit-text-fill-color: #5c6f5e !important;
-            box-shadow: 0 1px 4px rgba(38, 42, 36, 0.05) !important;
+            box-shadow: none !important;
         }
-        .st-key-ha_chat_composer_row [data-testid="stChatInput"] button:hover {
-            background: rgba(255, 253, 248, 0.92) !important;
-            border-color: rgba(44, 48, 42, 0.12) !important;
+        .st-key-ha_chat_composer_row [data-testid="stPopover"] button:hover {
+            background: rgba(92, 111, 94, 0.08) !important;
             color: #3e4e35 !important;
             -webkit-text-fill-color: #3e4e35 !important;
         }
+        .st-key-ha_chat_composer_row [data-testid="stPopover"] button svg {
+            display: none !important;
+        }
+        .st-key-ha_chat_composer_row [data-testid="stPopover"] button [data-testid="stMarkdownContainer"] {
+            display: none !important;
+        }
+        .st-key-ha_chat_composer_row [data-testid="stPopover"] button [data-testid="stIconMaterial"] {
+            margin: 0 !important;
+            font-size: 1.25rem !important;
+            color: #5c6f5e !important;
+        }
+        .st-key-ha_chat_composer_row [data-testid="stChatInput"] button,
+        .st-key-ha_chat_composer_row [data-testid="stChatInput"] button[kind="secondary"],
+        .st-key-ha_chat_composer_row [data-testid="stChatInput"] button[kind="primary"] {
+            height: 2.2rem !important;
+            min-height: 2.2rem !important;
+            width: 2.2rem !important;
+            max-width: 2.2rem !important;
+            padding: 0 !important;
+            border-radius: 50% !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            background: #5c6f5e !important;
+            border: none !important;
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+            box-shadow: 0 2px 8px rgba(92, 111, 94, 0.2) !important;
+            margin: auto 0 !important;
+        }
+        .st-key-ha_chat_composer_row [data-testid="stChatInput"] button:hover {
+            background: #3e4e35 !important;
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+            box-shadow: 0 4px 12px rgba(62, 78, 53, 0.3) !important;
+        }
+        .st-key-ha_chat_composer_row [data-testid="stChatInput"] button svg,
+        .st-key-ha_chat_composer_row [data-testid="stChatInput"] [data-testid="stIconMaterial"] {
+            color: #ffffff !important;
+            fill: #ffffff !important;
+            width: 1.15rem !important;
+            height: 1.15rem !important;
+            margin: 0 !important;
+        }
         .st-key-ha_chat_composer_row [data-testid="stHorizontalBlock"]:focus-within {
-            border-color: rgba(44, 48, 42, 0.14) !important;
-            box-shadow:
-                0 2px 14px rgba(38, 42, 36, 0.08),
-                inset 0 1px 0 rgba(255, 255, 255, 0.8) !important;
+            border-color: rgba(92, 111, 94, 0.32) !important;
+            box-shadow: none !important;
         }
         /* Konuşma kutuları: kullanıcı bej, asistan beyaz kart (mockup). */
         section.main:has(.st-key-ha_chat_composer_row) [data-testid="stChatMessage"] {
@@ -6619,6 +7124,33 @@ def _inject_global_styles(*, in_sidebar: bool = False) -> None:
         .st-key-ha_auth_shell [data-testid="stFormSubmitButton"] button[kind="primary"]:hover * {
             color: #ffffff !important;
             -webkit-text-fill-color: #ffffff !important;
+        }
+        /* Collapsed sidebar: hide all content completely and shrink the sidebar to 0 width */
+        [data-testid="stSidebar"][aria-expanded="false"] {
+            width: 0 !important;
+            min-width: 0 !important;
+            max-width: 0 !important;
+            overflow: hidden !important;
+            display: none !important;
+            visibility: hidden !important;
+        }
+        [data-testid="stSidebar"][aria-expanded="false"] * {
+            display: none !important;
+            visibility: hidden !important;
+            width: 0 !important;
+            height: 0 !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
+        }
+        /* Make stMain expand to full width when sidebar is collapsed */
+        [data-testid="stAppViewContainer"]:has([data-testid="stSidebar"][aria-expanded="false"]) [data-testid="stMain"],
+        [data-testid="stAppViewContainer"]:has([data-testid="stSidebar"][aria-expanded="false"]) section.main {
+            width: 100% !important;
+            max-width: 100% !important;
+            margin-left: 0 !important;
+            padding-left: 0 !important;
         }
         """
         + _GUEST_AUTH_MOCKUP_CSS
