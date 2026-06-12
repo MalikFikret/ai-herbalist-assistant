@@ -68,19 +68,19 @@ def _render_profile_page_content(lang: str) -> None:
                     with col_name:
                         name = st.text_input(
                             get_string(lang, "name"),
-                            value=current["name"],
+                            value=current.get("name", ""),
                             icon=":material/person:",
                         )
                     with col_age:
                         age = st.text_input(
                             get_string(lang, "age"),
-                            value=current["age"],
+                            value=current.get("age", ""),
                             icon=":material/calendar_today:",
                         )
 
                 gender_options = get_string(lang, "gender_opts")
                 try:
-                    g_idx = gender_options.index(current["gender"])
+                    g_idx = gender_options.index(current.get("gender", ""))
                 except ValueError:
                     g_idx = 0
 
@@ -96,14 +96,14 @@ def _render_profile_page_content(lang: str) -> None:
                 with st.container(key="ha_profile_row_allergies"):
                     allergies = st.text_area(
                         get_string(lang, "allergies"),
-                        value=current["allergies"],
+                        value=current.get("allergies", ""),
                         placeholder=get_string(lang, "allergies_placeholder"),
                         height=80,
                     )
                 with st.container(key="ha_profile_row_conditions"):
                     conditions = st.text_area(
                         get_string(lang, "conditions"),
-                        value=current["conditions"],
+                        value=current.get("conditions", ""),
                         placeholder=get_string(lang, "conditions_placeholder"),
                         height=80,
                     )
@@ -133,5 +133,6 @@ def _render_profile_page_content(lang: str) -> None:
                     if is_saved:
                         st.session_state.user_profile = _get_user_profile(username)
                         st.success(get_string(lang, "profile_saved"))
+                        st.rerun()
                     else:
                         st.error(get_string(lang, "profile_save_err"))

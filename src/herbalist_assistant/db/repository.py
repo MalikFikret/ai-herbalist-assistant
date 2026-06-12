@@ -250,6 +250,35 @@ def save_user_profile(username: str, profile: dict[str, str]) -> bool:
     return True
 
 
+def get_all_users() -> list[dict[str, Any]]:
+    with session_scope() as session:
+        stmt = select(User).order_by(User.created_at.desc())
+        real_users = []
+        for u in session.execute(stmt).scalars():
+            un = (u.username or "").lower()
+            if un == "guest" or un.startswith(("anon_", "guest_", "temp_", "test_")):
+                continue
+            real_users.append(
+                {
+                    "id": u.id,
+                    "username": u.username,
+                    "role": u.role,
+                    "created_at": u.created_at,
+                }
+            )
+        return real_users
+
+
+def delete_user(username: str) -> bool:
+    key = _user_key(username)
+    with session_scope() as session:
+        user = _find_user(session, key)
+        if user is None:
+            return False
+        session.delete(user)
+    return True
+
+
 # ---------------------------------------------------------------------------
 # Public: chat sessions + messages
 # ---------------------------------------------------------------------------

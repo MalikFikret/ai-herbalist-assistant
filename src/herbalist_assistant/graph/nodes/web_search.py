@@ -488,8 +488,9 @@ def web_search_node(state: AgentState) -> AgentState:
 
     queries = _build_web_search_queries(state, question)
     provider = _resolve_web_search_provider(state)
-    domains = list(config.TRUSTED_HERB_DOMAINS)
-    min_hits = int(config.TRUSTED_DOMAIN_MIN_RESULTS)
+    from herbalist_assistant.settings_manager import get_setting
+    domains = list(get_setting("TRUSTED_HERB_DOMAINS"))
+    min_hits = int(get_setting("TRUSTED_DOMAIN_MIN_RESULTS"))
     model_name = _resolve_model_name(state)
 
     # ── Stage 1: trusted domains ──────────────────────────────────────────────

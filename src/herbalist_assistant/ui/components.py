@@ -57,11 +57,7 @@ def _section_nav_label(lang: str, section_id: str) -> str:
     }.get(section_id, section_id)
 
 
-def _on_guest_top_nav() -> None:
-    """Sync ``active_page`` with Chat/Profile radio (Login is a separate control)."""
-    pick = st.session_state.get("ha_nav_guest_top")
-    if pick in ("Chat", "Profile"):
-        st.session_state["active_page"] = pick
+
 
 
 def _render_header(*, in_sidebar: bool = False) -> None:
@@ -94,8 +90,8 @@ def _render_header(*, in_sidebar: bool = False) -> None:
             transform: translateY(-50%);
             z-index: 2;
             font-size: 1.25rem;
-            font-weight: 600;
-            color: var(--ha-shell-2) !important;
+            font-weight: 800;
+            color: #2F4F4F !important;
             pointer-events: none;
             font-family: "Lora", serif !important;
             line-height: 1.2;

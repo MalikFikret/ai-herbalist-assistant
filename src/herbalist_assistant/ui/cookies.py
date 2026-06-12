@@ -89,7 +89,8 @@ _REMEMBERED_LOGINS_FILENAME = ".remembered_logins.json"
 
 
 def _remembered_logins_path() -> Path:
-    p = Path(config.DATA_DIR) / _REMEMBERED_LOGINS_FILENAME
+    from herbalist_assistant.settings_manager import get_setting
+    p = Path(get_setting("DATA_DIR")) / _REMEMBERED_LOGINS_FILENAME
     p.parent.mkdir(parents=True, exist_ok=True)
     return p
 
