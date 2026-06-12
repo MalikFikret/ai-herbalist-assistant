@@ -28,7 +28,6 @@ from .auth import (  # noqa: E402
     _try_auto_login_from_cookie,
 )
 from .components import (  # noqa: E402
-    _on_guest_top_nav,
     _render_header,
     _render_sidebar_guest_header,
     _render_sidebar_user_header,
@@ -390,15 +389,17 @@ def run() -> None:
                             # On Login: keep last Chat/Profile in the radio (key ``ha_nav_guest_top``)
                             _prev = st.session_state.get("ha_nav_guest_top", "Chat")
                             _gidx = _guest_top.index(_prev) if _prev in _guest_top else 0
-                        st.radio(
+                        selected_guest = st.radio(
                             "App section",
                             list(_guest_top),
                             index=_gidx,
                             format_func=lambda s: _section_nav_label(lang, s),
                             label_visibility="collapsed",
                             key="ha_nav_guest_top",
-                            on_change=_on_guest_top_nav,
                         )
+                        if selected_guest in _guest_top and selected_guest != st.session_state.get("active_page"):
+                            st.session_state.active_page = selected_guest
+                            st.rerun()
 
                     st.divider()
 

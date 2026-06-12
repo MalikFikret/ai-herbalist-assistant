@@ -162,17 +162,14 @@ def _render_auth_screen() -> None:
                                 f'<div class="ha-lux-form-sub">{_html.escape(get_string(lang, "auth_lux_login_sub"))}</div>',
                                 unsafe_allow_html=True,
                             )
-                            # E-posta form dışında: on_change anında tetiklenir.
-                            with st.container(key="ha_lux_username_outside"):
-                                st.text_input(
-                                    get_string(lang, "username"),
-                                    key="login_username",
-                                    label_visibility="collapsed",
-                                    placeholder=get_string(lang, "auth_lux_email_ph"),
-                                    on_change=_on_login_username_change,
-                                )
                             with st.container(key="ha_lux_remember_forgot_bar"):
                                 with st.form("login_form", clear_on_submit=False, border=False):
+                                    st.text_input(
+                                        get_string(lang, "username"),
+                                        key="login_username",
+                                        label_visibility="collapsed",
+                                        placeholder=get_string(lang, "auth_lux_email_ph"),
+                                    )
                                     st.text_input(
                                         get_string(lang, "password"),
                                         type="password",
@@ -303,8 +300,6 @@ def _render_auth_screen() -> None:
                             # iletmesi için kısa bir yumuşatma. ``st.rerun()``
                             # mevcut run'ı kestiğinde queued mesajların flush
                             # olmasına imkan veriyor.
-                            if wrote_cookie:
-                                time.sleep(0.4)
                             st.rerun()
 
                     if submit_register:

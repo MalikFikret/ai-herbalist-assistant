@@ -1,0 +1,6 @@
+{
+    "CHUNK_SIZE": 800,
+    "CHUNK_OVERLAP": 150,
+    "RETRIEVER_K": 6,
+    "LLM_TEMPERATURE": 0.2
+}

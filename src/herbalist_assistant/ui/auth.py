@@ -234,8 +234,6 @@ def _logout() -> None:
     st.session_state["active_page"] = "Login"
     st.session_state["auth_mode"] = "Login"
     st.session_state["ha_remember_consumed"] = True
-    if cookie_deleted:
-        time.sleep(0.4)
     st.rerun()
 
 

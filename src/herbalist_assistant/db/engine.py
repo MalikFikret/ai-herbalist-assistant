@@ -30,13 +30,14 @@ def _resolve_db_path() -> Path:
     """Where to put the SQLite file.
 
     Env var ``HA_DB_PATH`` wins (useful for containers or tests); otherwise
-    we use ``config.DB_PATH`` relative to the current working directory,
+    we use `get_setting("DB_PATH")` relative to the current working directory,
     matching how the legacy JSON files were located.
     """
     env_path = os.environ.get("HA_DB_PATH", "").strip()
     if env_path:
         return Path(env_path)
-    return Path(config.DB_PATH)
+    from herbalist_assistant.settings_manager import get_setting
+    return Path(get_setting("DB_PATH"))
 
 
 @lru_cache(maxsize=1)
