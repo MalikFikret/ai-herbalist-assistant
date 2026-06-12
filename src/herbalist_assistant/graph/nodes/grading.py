@@ -359,6 +359,15 @@ def answer_relevance_node(state: AgentState) -> AgentState:
          Previously a "no" score deleted a good answer. Now we log the
          low score and preserve the answer so the user still gets a response.
     """
+    # If the answer came from the direct_answer_node (small talk/greetings),
+    # skip the strict medical relevance check to prevent false rejections.
+    if state.get("direct_answer"):
+        _logger.info("answer_relevance_node: skipping check for direct answer")
+        return {
+            "answer_relevance_score": "yes",
+            "answer_relevance_feedback": "Direct answer; medical relevance check skipped.",
+        }
+
     question = str(state.get("question", "")).strip()
     answer = _extract_latest_answer(state)
 
